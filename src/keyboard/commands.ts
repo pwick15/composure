@@ -76,7 +76,7 @@ export const COMMANDS: Command[] = [
     title: 'Search commands and thoughts',
     hud: 'Search',
     group: 'General',
-    keys: ['mod+k', '/'],
+    keys: ['mod+k'],
     inInput: true,
     palette: false,
     run: () => a.openPalette(),

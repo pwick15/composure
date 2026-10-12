@@ -8,7 +8,7 @@ Three modes, one flow:
 2. **Sort** (`⇧2`). One thought at a time goes into an Eisenhower matrix. `Q W A S` (or `1 2 3 4`) picks a quadrant, `↵` confirms and moves on. `⇧Q` etc. assigns and moves on in one press.
 3. **Plan** (`⇧3`). Slot what matters into the next seven days. `1`–`7` picks a day, `8` is "later", `← →` nudges, `↵` confirms.
 
-`⌘K` (or `/`) searches every command, shortcut and thought. In Sort and Plan, typing any letter that isn't a shortcut opens search with that letter, Things 3 style. `?` shows every shortcut.
+`⌘K` searches every command, shortcut and thought. In Sort and Plan, typing any letter that isn't a shortcut opens search with that letter, Things 3 style. `?` shows every shortcut.
 
 When the week is planned, export from search: copy as Markdown, download an `.ics` calendar file, or send to Things 3.
 
