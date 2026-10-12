@@ -35,7 +35,6 @@ function QuadrantBox({ meta, items, currentId, landed }: QuadrantProps) {
       <header className="quad__head">
         <span className="quad__keys">
           <Kbd k={meta.key} size="lg" className="quad__key" />
-          <Kbd k={meta.num} size="xs" className="quad__num" />
         </span>
         <div className="quad__titles">
           <h3>{meta.title}</h3>
@@ -111,7 +110,7 @@ export function SortMode() {
         }
         idle={
           <>
-            <Keys keys={['q', 'w', 'a', 's']} size="xs" /> or <Keys keys={['1', '2', '3', '4']} size="xs" /> to file
+            <Keys keys={['q', 'w', 'a', 's']} size="xs" /> to file
             <span className="card__sep">·</span>
             <Keys keys={['up', 'down']} size="xs" /> move
           </>

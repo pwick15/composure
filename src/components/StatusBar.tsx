@@ -18,12 +18,12 @@ const h = (keys: string | string[], label: string, literal = false): Hint => ({
 function hintsFor(s: State): Hint[] {
   if (s.mode === 'dump') {
     if (s.editing)
-      return [h('enter', 'next'), h('escape', 'done'), h(['up', 'down'], 'move'), h('backspace', 'empty: step back')]
+      return [h('enter', 'next'), h('⇧ ⇧', 'done', true), h(['up', 'down'], 'move'), h('backspace', 'empty: step back')]
     if (s.selectedId)
       return [
         h('enter', 'edit'),
         h('backspace', 'delete'),
-        h(['alt+up', 'alt+down'], 'reorder'),
+        h(['shift+up', 'shift+down'], 'reorder'),
         h('mod+enter', 'done'),
         h('escape', 'deselect'),
       ]
@@ -43,9 +43,9 @@ function hintsFor(s: State): Hint[] {
       return [h('shift+3', 'plan'), h('backspace', 'back'), h(['up', 'down'], 'revisit'), h('mod+k', 'search')]
     return [
       h(['q', 'w', 'a', 's'], 'file'),
-      h('1–4', 'also works', true),
       h(['up', 'down'], 'move'),
       h(['left', 'right'], 'quadrant'),
+      h('⇧ + arrows', 'move it', true),
       h('backspace', 'back'),
       h('e', 'edit'),
       h('x', 'done'),
@@ -60,6 +60,7 @@ function hintsFor(s: State): Hint[] {
     h('0', 'unplan'),
     h(['up', 'down'], 'move'),
     h(['left', 'right'], 'days'),
+    h('⇧ + arrows', 'move it', true),
     h('backspace', 'back'),
     h('x', 'done'),
   ]

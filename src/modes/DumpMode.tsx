@@ -50,6 +50,8 @@ function Editor({ target, initial }: { target: EditTarget; initial: string }) {
   }, [caretAtStart])
 
   const run = (fn: () => void) => flushSync(fn)
+  // Double-tap Shift finishes typing, like Esc. Any other key in between resets it.
+  const lastShift = useRef(0)
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     const native = e.nativeEvent
@@ -57,6 +59,20 @@ function Editor({ target, initial }: { target: EditTarget; initial: string }) {
     const el = e.currentTarget
     const value = el.value
     const mod = isMac ? e.metaKey : e.ctrlKey
+
+    if (e.key === 'Shift') {
+      if (e.repeat) return
+      const now = performance.now()
+      if (now - lastShift.current < 400) {
+        lastShift.current = 0
+        feedback(native, 'Finish')
+        run(() => editorExit(target, value))
+      } else {
+        lastShift.current = now
+      }
+      return
+    }
+    lastShift.current = 0
 
     if (e.key === 'Enter' && mod && target.kind === 'item') {
       e.preventDefault()

@@ -1,7 +1,14 @@
 import { columnFor, planColumns, todayKey } from '../lib/dates'
 import { uid } from '../lib/id'
-import { QUADRANT_BY_ID } from '../lib/quadrants'
-import { nextInQueue, planGroups, resolvePlanCursor, resolveSortCursor, sortGroups } from '../lib/selectors'
+import { QUADRANTS, QUADRANT_BY_ID } from '../lib/quadrants'
+import {
+  itemsInColumn,
+  nextInQueue,
+  planGroups,
+  resolvePlanCursor,
+  resolveSortCursor,
+  sortGroups,
+} from '../lib/selectors'
 import type { Item, Mode, Quadrant } from '../lib/types'
 import { type Deck, type Editing, freshDeck, getState as get, setState as set, type TrayExit } from './store'
 
@@ -474,6 +481,64 @@ export function deckBack(m: DeckMode) {
   }
   setDeck(m, { trail })
   toast('Nothing filed yet')
+}
+
+// ---------------------------------------------------------------- shift+arrows: move the thought, keep it selected
+
+function landHere(m: DeckMode, id: string, lands: boolean) {
+  setDeck(m, { cursor: id })
+  set((s) => ({ trayEditing: null, landed: lands ? { id, n: (s.landed?.n ?? 0) + 1 } : s.landed }))
+}
+
+/** Shift+arrows in Sort: slide the selected thought to the neighbouring quadrant. Up from the top row unsorts it. */
+export function sortShift(dRow: number, dCol: number) {
+  const cur = sortCurrent()
+  if (!cur) return nothingHere('sort')
+  let next: Quadrant | null
+  if (!cur.quadrant) {
+    // Unsorted sits above the grid: down or left enters Do, right enters Schedule.
+    if (dRow < 0) return
+    next = dCol > 0 ? 'schedule' : 'do'
+  } else {
+    const q = QUADRANT_BY_ID[cur.quadrant]
+    const row = q.row + dRow
+    const col = clamp(q.col + dCol, 0, 1)
+    next = row < 0 ? null : QUADRANTS.find((x) => x.row === clamp(row, 0, 1) && x.col === col)!.id
+  }
+  if (next === cur.quadrant) return
+  patch(cur.id, { quadrant: next })
+  landHere('sort', cur.id, next !== null)
+}
+
+/** Shift+←/→ in Plan: a day earlier or later. Left of today unplans; right of Later stays in Later. */
+export function planShift(dir: -1 | 1) {
+  const cur = planCurrent()
+  if (!cur) return nothingHere('plan')
+  const today = todayKey()
+  const keys = planColumns(today).map((c) => c.key)
+  const col = columnFor(cur.slot, today)
+  const i = col === null ? (dir > 0 ? 0 : -1) : keys.indexOf(col) + dir
+  const next = i < 0 ? null : keys[Math.min(i, keys.length - 1)]
+  if (next === col) return
+  patch(cur.id, { slot: next })
+  landHere('plan', cur.id, next !== null)
+}
+
+/** Shift+↑/↓ in Plan: reorder the selected thought within its day. */
+export function planReorder(dir: -1 | 1) {
+  const cur = planCurrent()
+  if (!cur) return nothingHere('plan')
+  const today = todayKey()
+  const col = columnFor(cur.slot, today)
+  if (col === null) return
+  const list = itemsInColumn(get().items, col, today)
+  const other = list[list.findIndex((i) => i.id === cur.id) + dir]
+  if (!other) return
+  const items = [...get().items]
+  const a = items.findIndex((i) => i.id === cur.id)
+  const b = items.findIndex((i) => i.id === other.id)
+  ;[items[a], items[b]] = [items[b], items[a]]
+  commit(items)
 }
 
 export function deckFocus(m: DeckMode, id: string) {

@@ -359,18 +359,6 @@
   margin-right: 6px;
 }
 
-.quad__num.kbd {
-  position: absolute;
-  right: -7px;
-  bottom: -6px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
-  font-size: 9px;
-  border-bottom-width: 1px;
-  background: var(--surface);
-}
-
 .quad__count,
 .day__count {
   margin-left: auto;

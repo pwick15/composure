@@ -71,7 +71,8 @@ function hudPush(keys: string[], label: string) {
 export function feedback(e: KeyboardEvent, label: string) {
   const combo = eventCombo(e)
   pulse(comboId(combo))
-  if (getState().hud) hudPush(comboParts(combo), label)
+  // A bare Shift (the double-tap) reads better as two shift caps.
+  if (getState().hud) hudPush(e.key === 'Shift' ? ['⇧', '⇧'] : comboParts(combo), label)
 }
 
 /** Same as feedback() for actions that did not come from a real key event (e.g. clicks). */
