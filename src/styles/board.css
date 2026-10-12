@@ -80,22 +80,11 @@
     box-shadow 140ms;
 }
 
-.card[data-target] {
-  border-color: var(--q);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--q) 20%, transparent),
-    var(--shadow);
-}
-
 .card__inner {
   display: flex;
   flex-direction: column;
   height: 100%;
   padding: 13px 16px 12px;
-}
-
-.card__inner.is-shaking {
-  animation: shake 340ms var(--ease-out);
 }
 
 .card__top {
@@ -144,25 +133,65 @@
   color: var(--text-3);
 }
 
-.card__idle,
-.card__target {
+.card__idle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.card__target {
+.card__sep {
+  margin: 0 4px;
+  color: var(--line-strong);
+}
+
+/* ------------------------------------------------------------------ receipt */
+
+.tray__receipt {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: min(680px, 100%);
+  height: 18px;
+  margin-top: -2px;
+}
+
+.receipt {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font: 11.5px/1 var(--font-mono);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.receipt__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+}
+
+.receipt__dest {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--q);
   font-weight: 600;
 }
 
-.card__confirm {
+.receipt__dest::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--q);
+}
+
+.receipt__back {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-left: 10px;
-  color: var(--text-3);
-  font-weight: 400;
+  margin-left: 8px;
 }
 
 .card--empty {
@@ -255,10 +284,9 @@
   border-color: var(--line-strong);
 }
 
-.quad[data-pending] {
-  border-color: var(--q);
-  background: color-mix(in srgb, var(--q) 7%, var(--surface));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--q) 16%, transparent);
+.quad[data-home] {
+  border-color: color-mix(in srgb, var(--q) 60%, var(--line));
+  background: color-mix(in srgb, var(--q) 5%, var(--surface));
 }
 
 .quad__flash {
@@ -295,7 +323,7 @@
   border-color: color-mix(in srgb, var(--q) 50%, var(--line-strong));
 }
 
-.quad[data-pending] .quad__key.kbd {
+.quad[data-home] .quad__key.kbd {
   background: var(--q);
   color: var(--bg);
   border-color: var(--q);
@@ -412,12 +440,10 @@
   border-color: var(--line-strong);
 }
 
-.chip[data-ghost] {
-  border-style: dashed;
-  border-color: var(--q);
-  background: color-mix(in srgb, var(--q) 9%, transparent);
-  color: var(--text-2);
-  cursor: default;
+.chip[data-selected] {
+  border-color: var(--accent-fg);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-2));
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .chip[data-fresh] {
@@ -482,13 +508,12 @@
   background: var(--accent);
 }
 
-.day[data-pending] {
-  border-color: var(--accent-fg);
-  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.day[data-home] {
+  border-color: color-mix(in srgb, var(--accent-fg) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
 }
 
-.day[data-pending] .day__key.kbd {
+.day[data-home] .day__key.kbd {
   background: var(--accent);
   color: var(--accent-ink);
   border-color: var(--accent);

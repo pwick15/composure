@@ -15,8 +15,3 @@ export interface Item {
 }
 
 export type Theme = 'system' | 'dark' | 'light'
-
-/** Wraps a pending choice so that "pending: clear it" (value null) differs from "nothing pending". */
-export interface Pending<T> {
-  value: T
-}

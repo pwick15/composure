@@ -1,14 +1,14 @@
 import { AnimatePresence } from 'motion/react'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Chip } from '../components/Chip'
-import { Kbd } from '../components/Kbd'
+import { Kbd, Keys } from '../components/Kbd'
 import { DoneTag, QuadrantTag, SlotTag } from '../components/Tags'
-import { Tray } from '../components/Tray'
+import { Tray, type Receipt } from '../components/Tray'
 import { columnFor, isDateSlot, LATER, planColumns, slotLabel, todayKey, type DayColumn } from '../lib/dates'
 import { keepFocus } from '../lib/motion'
 import { isPlannable, itemsInColumn, planQueue, resolvePlanCursor } from '../lib/selectors'
 import type { Item } from '../lib/types'
-import { planAssign, planFocus, setMode } from '../state/actions'
+import { deckFile, deckFocus, setMode } from '../state/actions'
 import { copyPlan, downloadCalendar, sendToThings } from '../state/exporters'
 import { useStore } from '../state/store'
 
@@ -16,23 +16,23 @@ interface DayProps {
   col: DayColumn
   num: number
   items: Item[]
-  current: Item | null
-  pending: boolean
+  currentId: string | null
   landed: { id: string; n: number } | null
   today: string
 }
 
-function DayBox({ col, num, items, current, pending, landed, today }: DayProps) {
+function DayBox({ col, num, items, currentId, landed, today }: DayProps) {
   const flash = landed && items.some((i) => i.id === landed.id) ? landed.n : null
+  const home = items.some((i) => i.id === currentId)
   return (
     <section
       className="day"
       data-today={col.today || undefined}
       data-weekend={col.weekend || undefined}
       data-later={col.key === LATER || undefined}
-      data-pending={pending || undefined}
+      data-home={home || undefined}
       onMouseDown={keepFocus}
-      onClick={() => planAssign(col.key)}
+      onClick={() => deckFile('plan', col.key)}
       aria-label={col.sub}
     >
       {flash !== null && <span key={flash} className="quad__flash" data-q="accent" />}
@@ -46,14 +46,14 @@ function DayBox({ col, num, items, current, pending, landed, today }: DayProps) 
       </header>
       <div className="day__body">
         <AnimatePresence initial={false} mode="popLayout">
-          {pending && current && <Chip key={`ghost-${current.id}`} item={current} ghost />}
           {items.map((it) => (
             <Chip
               key={it.id}
               item={it}
+              selected={it.id === currentId}
               fresh={landed?.id === it.id}
               meta={col.key === LATER && isDateSlot(it.slot) ? slotLabel(it.slot, today) : undefined}
-              onSelect={() => planFocus(it.id)}
+              onSelect={() => deckFocus('plan', it.id)}
             />
           ))}
         </AnimatePresence>
@@ -64,24 +64,33 @@ function DayBox({ col, num, items, current, pending, landed, today }: DayProps) 
 
 export function PlanMode() {
   const items = useStore((s) => s.items)
-  const cursor = useStore((s) => s.planCursor)
-  const pending = useStore((s) => s.planPending)
+  const deck = useStore((s) => s.decks.plan)
   const landed = useStore((s) => s.landed)
   const today = todayKey()
   const cols = useMemo(() => planColumns(today), [today])
 
-  const currentId = resolvePlanCursor(items, cursor, today)
+  const currentId = resolvePlanCursor(items, deck.cursor, today)
   const current = items.find((i) => i.id === currentId) ?? null
   const queue = useMemo(() => planQueue(items, today), [items, today])
-  const plannable = useMemo(() => items.filter((i) => isPlannable(i) && !(i.done && !columnFor(i.slot, today))), [items, today])
+  const plannable = useMemo(
+    () => items.filter((i) => isPlannable(i) && !(i.done && !columnFor(i.slot, today))),
+    [items, today],
+  )
   const dropped = items.length - items.filter(isPlannable).length
 
-  const pendingCol = pending ? (pending.value === null ? null : columnFor(pending.value, today)) : undefined
-  const target = pending
-    ? pending.value === null
-      ? { label: 'Unplanned', tone: 'none' }
-      : { label: cols.find((c) => c.key === pendingCol)?.sub ?? 'Later', tone: 'accent' }
+  const lastId = deck.trail.at(-1)
+  const last = items.find((i) => i.id === lastId)
+  const receipt: Receipt | null = last
+    ? {
+        item: last,
+        label: last.slot ? slotLabel(last.slot, today) : 'Unplanned',
+        tone: last.slot ? 'accent' : 'none',
+      }
     : null
+
+  useEffect(() => {
+    document.querySelector('.day .chip[data-selected]')?.scrollIntoView({ block: 'nearest' })
+  }, [currentId])
 
   return (
     <div className="board">
@@ -91,7 +100,7 @@ export function PlanMode() {
         total={plannable.length}
         current={current}
         ahead={queue.filter((i) => i.id !== currentId).length}
-        target={target}
+        receipt={receipt}
         tags={
           current && (
             <>
@@ -103,8 +112,11 @@ export function PlanMode() {
         }
         idle={
           <>
-            <Kbd label="1–7" size="xs" /> day · <Kbd k="8" size="xs" /> later · <Kbd k="left" size="xs" />
-            <Kbd k="right" size="xs" /> pick
+            <Kbd label="1–7" size="xs" /> day · <Kbd k="8" size="xs" /> later
+            <span className="card__sep">·</span>
+            <Keys keys={['up', 'down']} size="xs" /> move
+            <span className="card__sep">·</span>
+            <Keys keys={['left', 'right']} size="xs" /> days
           </>
         }
         empty={
@@ -148,9 +160,8 @@ export function PlanMode() {
             key={col.key}
             col={col}
             num={i + 1}
-            items={itemsInColumn(items, col.key, today).filter((it) => it.id !== currentId)}
-            current={current}
-            pending={pendingCol === col.key}
+            items={itemsInColumn(items, col.key, today)}
+            currentId={currentId}
             landed={landed}
             today={today}
           />

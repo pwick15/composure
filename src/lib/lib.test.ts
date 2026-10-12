@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { addDays, columnFor, LATER, planColumns, slotLabel } from './dates'
 import { matrixMarkdown, parseBackup, planICS, planMarkdown, thingsURL } from './export'
 import { fuzzyBest, fuzzyMatch } from './fuzzy'
-import { nextUnsorted, planQueue, sortOrder } from './selectors'
+import { planGroups, planQueue, sortOrder } from './selectors'
 import { splitLines } from './text'
 import type { Item } from './types'
 
@@ -85,10 +85,11 @@ describe('selectors', () => {
     expect(sortOrder(items).map((i) => i.text)).toEqual(['b', 'c', 'a'])
   })
 
-  it('finds the next unsorted item, wrapping', () => {
-    const items = [item('a'), item('b', { quadrant: 'do' }), item('c')]
-    expect(nextUnsorted(items, items[2].id)).toBe(items[0].id)
-    expect(nextUnsorted([items[0]], items[0].id)).toBeNull()
+  it('groups Plan as queue, seven days, then Later', () => {
+    const items = [item('q'), item('today', { slot: TODAY }), item('later', { slot: LATER })]
+    const groups = planGroups(items, TODAY)
+    expect(groups).toHaveLength(9)
+    expect(groups.map((g) => g.map((i) => i.text).join())).toEqual(['q', 'today', '', '', '', '', '', '', 'later'])
   })
 
   it('queues overdue first, then by quadrant, and leaves out dropped and done', () => {

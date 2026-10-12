@@ -1,17 +1,9 @@
 import { columnFor, planColumns, todayKey } from '../lib/dates'
 import { uid } from '../lib/id'
-import { QUADRANT_BY_ID, quadrantAt } from '../lib/quadrants'
-import {
-  nextInQueue,
-  nextUnsorted,
-  planOrder,
-  planQueue,
-  resolvePlanCursor,
-  resolveSortCursor,
-  sortOrder,
-} from '../lib/selectors'
-import type { Item, Mode, Quadrant, Slot } from '../lib/types'
-import { type Editing, getState as get, setState as set } from './store'
+import { QUADRANT_BY_ID } from '../lib/quadrants'
+import { nextInQueue, planGroups, resolvePlanCursor, resolveSortCursor, sortGroups } from '../lib/selectors'
+import type { Item, Mode, Quadrant } from '../lib/types'
+import { type Deck, type Editing, freshDeck, getState as get, setState as set, type TrayExit } from './store'
 
 export type EditTarget = Exclude<Editing, null>
 
@@ -52,25 +44,34 @@ export function transact<T>(fn: () => T): T {
   }
 }
 
+/** The first thought that differs between two snapshots. */
+function changedId(a: Item[], b: Item[]): string | null {
+  const byId = new Map(b.map((i) => [i.id, i]))
+  for (const i of a) {
+    const j = byId.get(i.id)
+    if (!j || j.quadrant !== i.quadrant || j.slot !== i.slot || j.text !== i.text || j.done !== i.done) return i.id
+  }
+  return b.find((j) => !a.some((i) => i.id === j.id))?.id ?? null
+}
+
 export function undo() {
   const s = get()
   const prev = s.past.at(-1)
   if (!prev) return toast('Nothing to undo')
-  set({
-    items: prev,
-    past: s.past.slice(0, -1),
-    future: [s.items, ...s.future],
-    sortPending: null,
-    planPending: null,
-    editing: null,
-  })
+  const changed = changedId(prev, s.items)
+  set({ items: prev, past: s.past.slice(0, -1), future: [s.items, ...s.future], editing: null })
+  // In Sort and Plan, the thought that changed comes back to the tray, ready to re-file.
+  if (isDeck(s.mode) && changed && inDeck(s.mode, changed)) {
+    setDeck(s.mode, { trail: get().decks[s.mode].trail.filter((id) => id !== changed) })
+    wander(s.mode, changed, { x: 0, y: -1 })
+  }
 }
 
 export function redo() {
   const s = get()
   const next = s.future[0]
   if (!next) return toast('Nothing to redo')
-  set({ items: next, past: [...s.past, s.items], future: s.future.slice(1), sortPending: null, planPending: null })
+  set({ items: next, past: [...s.past, s.items], future: s.future.slice(1) })
 }
 
 // ---------------------------------------------------------------- toasts
@@ -168,10 +169,7 @@ function resetCursors() {
   set({
     selectedId: null,
     editing: null,
-    sortCursor: null,
-    sortPending: null,
-    planCursor: null,
-    planPending: null,
+    decks: { sort: freshDeck(), plan: freshDeck() },
     trayEditing: null,
     landed: null,
   })
@@ -335,164 +333,158 @@ export function dumpEscape() {
   set({ selectedId: null })
 }
 
-// ---------------------------------------------------------------- sort
+// ---------------------------------------------------------------- sort + plan decks
+//
+// Sort and Plan work the same way. One thought is selected and shown in the tray.
+// A filing key (Q W A S in Sort, 1–8 in Plan) applies at once and moves on to the
+// next thought that still needs a decision. ↑/↓ walk the whole list, ←/→ jump
+// between groups, and ⌫ brings back whatever was filed last.
 
-export function sortCurrent(): Item | null {
-  const s = get()
-  return findItem(resolveSortCursor(s.items, s.sortCursor)) ?? null
+export type DeckMode = 'sort' | 'plan'
+
+const isDeck = (m: Mode): m is DeckMode => m === 'sort' || m === 'plan'
+
+/** The deck's lists in reading order. Group 0 is the queue still waiting for a decision. */
+function groupsFor(m: DeckMode): Item[][] {
+  const { items } = get()
+  return m === 'sort' ? sortGroups(items) : planGroups(items, todayKey())
 }
 
-function nothingHere(what: 'sort' | 'plan') {
+const inDeck = (m: DeckMode, id: string) => groupsFor(m).some((g) => g.some((i) => i.id === id))
+
+function currentIdFor(m: DeckMode): string | null {
+  const { items, decks } = get()
+  const { cursor } = decks[m]
+  return m === 'sort' ? resolveSortCursor(items, cursor) : resolvePlanCursor(items, cursor, todayKey())
+}
+
+export const sortCurrent = () => findItem(currentIdFor('sort')) ?? null
+export const planCurrent = () => findItem(currentIdFor('plan')) ?? null
+export const trayCurrent = () => (get().mode === 'plan' ? planCurrent() : sortCurrent())
+
+function setDeck(m: DeckMode, change: Partial<Deck>) {
+  set((s) => ({ decks: { ...s.decks, [m]: { ...s.decks[m], ...change } } }))
+}
+
+function nothingHere(m: DeckMode) {
   if (!get().items.length) return toast('Nothing here yet. Dump some thoughts first', 'shift+1')
-  if (what === 'sort') return toast('Everything is sorted. J / K to revise', 'shift+3')
-  toast('Everything is planned. J / K to revise')
+  if (m === 'sort') return toast('Everything is sorted', 'shift+3')
+  toast('Nothing left to plan')
 }
 
-export function sortPick(q: Quadrant | null) {
-  if (!sortCurrent()) return nothingHere('sort')
-  set({ sortPending: { value: q }, trayEditing: null })
+/**
+ * Selects a thought outside the normal flow. Leaving the queue to look at filed
+ * thoughts remembers your place, so the next filing key brings you back to it.
+ */
+function wander(m: DeckMode, to: string, exit: TrayExit) {
+  const from = currentIdFor(m)
+  const queue = groupsFor(m)[0]
+  const queued = (id: string | null) => id !== null && queue.some((i) => i.id === id)
+  const { resume } = get().decks[m]
+  setDeck(m, { cursor: to, resume: queued(to) ? null : (resume ?? (queued(from) ? from : null)) })
+  set({ trayExit: exit, trayEditing: null })
 }
 
-export function sortNudge(dRow: number, dCol: number) {
-  const cur = sortCurrent()
-  if (!cur) return nothingHere('sort')
-  const s = get()
-  const base = s.sortPending ? s.sortPending.value : cur.quadrant
-  if (!base) return set({ sortPending: { value: 'do' } })
-  const m = QUADRANT_BY_ID[base]
-  set({ sortPending: { value: quadrantAt(clamp(m.row + dRow, 0, 1), clamp(m.col + dCol, 0, 1)) } })
-}
-
-export function sortConfirm() {
-  const cur = sortCurrent()
-  if (!cur) return nothingHere('sort')
-  const s = get()
-  const pending = s.sortPending
-  if (!pending && !cur.quadrant) {
-    set({ shake: s.shake + 1 })
-    return toast('Pick a quadrant first', 'q')
+function exitToward(m: DeckMode, value: string | null): TrayExit {
+  if (value === null) return { x: 0, y: -1 }
+  if (m === 'sort') {
+    const q = QUADRANT_BY_ID[value as Quadrant]
+    return { x: q.col === 0 ? -1 : 1, y: q.row === 0 ? 1 : 2 }
   }
-  if (pending) patch(cur.id, { quadrant: pending.value })
-  const target = pending ? pending.value : cur.quadrant
-  const meta = target ? QUADRANT_BY_ID[target] : null
-  set({
-    sortCursor: nextUnsorted(get().items, cur.id),
-    sortPending: null,
-    trayEditing: null,
-    trayExit: meta ? { x: meta.col === 0 ? -1 : 1, y: meta.row === 0 ? 1 : 2 } : { x: 0, y: -1 },
-    landed: target ? { id: cur.id, n: (s.landed?.n ?? 0) + 1 } : s.landed,
-  })
-}
-
-export function sortStep(dir: -1 | 1) {
-  const s = get()
-  const order = sortOrder(s.items)
-  if (!order.length) return nothingHere('sort')
-  const cur = resolveSortCursor(s.items, s.sortCursor)
-  const i = order.findIndex((it) => it.id === cur)
-  const next = i === -1 ? (dir > 0 ? 0 : order.length - 1) : (i + dir + order.length) % order.length
-  set({ sortCursor: order[next].id, sortPending: null, trayEditing: null, trayExit: { x: -dir, y: 0 } })
-}
-
-export function sortCancel() {
-  set({ sortPending: null })
-}
-
-export function sortFocus(id: string) {
-  set({ sortCursor: id, sortPending: null, trayEditing: null, trayExit: { x: 0, y: -1 } })
-}
-
-export function sortAssign(q: Quadrant) {
-  if (!sortCurrent()) return nothingHere('sort')
-  set({ sortPending: { value: q } })
-  sortConfirm()
-}
-
-// ---------------------------------------------------------------- plan
-
-export function planCurrent(): Item | null {
-  const s = get()
-  return findItem(resolvePlanCursor(s.items, s.planCursor, todayKey())) ?? null
-}
-
-export function planPick(slot: Slot | null) {
-  if (!planCurrent()) return nothingHere('plan')
-  set({ planPending: { value: slot }, trayEditing: null })
-}
-
-export function planPickIndex(n: number) {
-  const col = planColumns(todayKey())[n - 1]
-  if (col) planPick(col.key)
-}
-
-export function planNudge(dir: -1 | 1) {
-  const cur = planCurrent()
-  if (!cur) return nothingHere('plan')
   const today = todayKey()
-  const cols = planColumns(today).map((c) => c.key)
-  const s = get()
-  const base = s.planPending ? s.planPending.value : columnFor(cur.slot, today)
-  if (base === null) return set({ planPending: { value: cols[0] } })
-  const i = cols.indexOf(columnFor(base, today) ?? cols[0])
-  set({ planPending: { value: cols[clamp(i + dir, 0, cols.length - 1)] } })
-}
-
-export function planConfirm() {
-  const cur = planCurrent()
-  if (!cur) return nothingHere('plan')
-  const s = get()
-  const today = todayKey()
-  const pending = s.planPending
-  if (!pending && columnFor(cur.slot, today) === null) {
-    set({ shake: s.shake + 1 })
-    return toast('Pick a day first', '1')
-  }
-  const queueBefore = planQueue(s.items, today)
-  if (pending) patch(cur.id, { slot: pending.value })
-  const target = pending ? pending.value : cur.slot
   const cols = planColumns(today)
-  const col = target ? cols.findIndex((c) => c.key === columnFor(target, today)) : -1
-  set({
-    planCursor: nextInQueue(queueBefore, cur.id),
-    planPending: null,
+  const i = cols.findIndex((c) => c.key === columnFor(value, today))
+  return { x: (i - (cols.length - 1) / 2) / 2, y: 1.6 }
+}
+
+/** Files the selected thought (a quadrant in Sort, a slot in Plan) and moves on. */
+export function deckFile(m: DeckMode, value: string | null) {
+  const cur = m === 'sort' ? sortCurrent() : planCurrent()
+  if (!cur) return nothingHere(m)
+  const queueBefore = groupsFor(m)[0]
+  const orderBefore = groupsFor(m).flat()
+  patch(cur.id, m === 'sort' ? { quadrant: value as Quadrant | null } : { slot: value })
+
+  // Back to where you left off if you wandered, else the next thought in the queue.
+  const { resume, trail } = get().decks[m]
+  let next =
+    resume && resume !== cur.id && groupsFor(m)[0].some((i) => i.id === resume)
+      ? resume
+      : nextInQueue(queueBefore, cur.id)
+  if (!next && !queueBefore.some((i) => i.id === cur.id)) {
+    // Nothing queued and you were browsing filed thoughts: stay at the same place in the list.
+    const i = orderBefore.findIndex((it) => it.id === cur.id)
+    next = orderBefore[i + 1]?.id ?? orderBefore[i - 1]?.id ?? null
+  }
+
+  setDeck(m, { cursor: next, resume: null, trail: [...trail.filter((id) => id !== cur.id), cur.id].slice(-100) })
+  const lands = value !== null && (m === 'sort' || columnFor(value, todayKey()) !== null)
+  set((s) => ({
+    trayExit: exitToward(m, value),
     trayEditing: null,
-    trayExit: col >= 0 ? { x: (col - (cols.length - 1) / 2) / 2, y: 1.6 } : { x: 0, y: -1 },
-    landed: col >= 0 ? { id: cur.id, n: (s.landed?.n ?? 0) + 1 } : s.landed,
-  })
+    landed: lands ? { id: cur.id, n: (s.landed?.n ?? 0) + 1 } : s.landed,
+  }))
 }
 
-export function planStep(dir: -1 | 1) {
-  const s = get()
-  const today = todayKey()
-  const order = planOrder(s.items, today)
-  if (!order.length) return nothingHere('plan')
-  const cur = resolvePlanCursor(s.items, s.planCursor, today)
+/** ↵: leave the selected thought as it is and move on. */
+export function deckKeep(m: DeckMode) {
+  const cur = m === 'sort' ? sortCurrent() : planCurrent()
+  if (!cur) return nothingHere(m)
+  deckFile(m, m === 'sort' ? cur.quadrant : cur.slot)
+}
+
+export function planFileDay(n: number) {
+  const col = planColumns(todayKey())[n - 1]
+  if (col) deckFile('plan', col.key)
+}
+
+/** ↑/↓: walk the whole list in reading order, stopping at the ends. */
+export function deckMove(m: DeckMode, dir: -1 | 1) {
+  const order = groupsFor(m).flat()
+  if (!order.length) return nothingHere(m)
+  const cur = currentIdFor(m)
   const i = order.findIndex((it) => it.id === cur)
-  const next = i === -1 ? (dir > 0 ? 0 : order.length - 1) : (i + dir + order.length) % order.length
-  set({ planCursor: order[next].id, planPending: null, trayEditing: null, trayExit: { x: -dir, y: 0 } })
+  const j = i === -1 ? (dir > 0 ? 0 : order.length - 1) : clamp(i + dir, 0, order.length - 1)
+  if (j !== i) wander(m, order[j].id, { x: 0, y: -dir * 0.6 })
 }
 
-export function planCancel() {
-  set({ planPending: null })
+/** ←/→: jump to the neighbouring quadrant or day, keeping roughly the same row. */
+export function deckJump(m: DeckMode, dir: -1 | 1) {
+  const groups = groupsFor(m)
+  const cur = currentIdFor(m)
+  let g = groups.findIndex((list) => list.some((i) => i.id === cur))
+  const row = g === -1 ? 0 : groups[g].findIndex((i) => i.id === cur)
+  if (g === -1) g = dir > 0 ? -1 : groups.length
+  for (let k = g + dir; k >= 0 && k < groups.length; k += dir) {
+    const list = groups[k]
+    if (list.length) return wander(m, list[Math.min(row, list.length - 1)].id, { x: -dir * 0.8, y: 0 })
+  }
 }
 
-export function planFocus(id: string) {
-  set({ planCursor: id, planPending: null, trayEditing: null, trayExit: { x: 0, y: -1 } })
+/** ⌫: bring back the thought filed most recently (again to step further back). */
+export function deckBack(m: DeckMode) {
+  const cur = currentIdFor(m)
+  const trail = [...get().decks[m].trail]
+  while (trail.length) {
+    const id = trail.pop()!
+    if (id !== cur && inDeck(m, id)) {
+      setDeck(m, { trail })
+      return wander(m, id, { x: 0.8, y: 0 })
+    }
+  }
+  setDeck(m, { trail })
+  toast('Nothing filed yet')
 }
 
-export function planAssign(slot: Slot) {
-  if (!planCurrent()) return nothingHere('plan')
-  set({ planPending: { value: slot } })
-  planConfirm()
+export function deckFocus(m: DeckMode, id: string) {
+  wander(m, id, { x: 0, y: -1 })
 }
 
 // ---------------------------------------------------------------- tray (sort + plan)
 
-export const trayCurrent = () => (get().mode === 'plan' ? planCurrent() : sortCurrent())
-
 export function trayEdit() {
   const cur = trayCurrent()
-  if (cur) set({ trayEditing: cur.id, sortPending: null, planPending: null })
+  if (cur) set({ trayEditing: cur.id })
 }
 
 export function trayCommit(id: string, value: string) {
@@ -520,9 +512,8 @@ export function trayDelete() {
 // ---------------------------------------------------------------- navigation
 
 export function jumpTo(id: string) {
-  const s = get()
-  if (s.mode === 'sort') return sortFocus(id)
-  if (s.mode === 'plan' && planOrder(s.items, todayKey()).some((i) => i.id === id)) return planFocus(id)
+  const { mode } = get()
+  if (isDeck(mode) && inDeck(mode, id)) return deckFocus(mode, id)
   setMode('dump')
   set({ selectedId: id })
 }

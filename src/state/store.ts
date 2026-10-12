@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import type { Item, Mode, Pending, Quadrant, Slot, Theme } from '../lib/types'
+import type { Item, Mode, Theme } from '../lib/types'
 
 export type Editing =
   | { kind: 'item'; id: string; caret: 'start' | 'end' }
@@ -12,6 +12,18 @@ export interface Toast {
   text: string
   keys?: string
 }
+
+/**
+ * A Sort or Plan session: which thought is selected, what was filed (for ⌫ back),
+ * and which queued thought to return to after wandering off into filed ones.
+ */
+export interface Deck {
+  cursor: string | null
+  trail: string[]
+  resume: string | null
+}
+
+export const freshDeck = (): Deck => ({ cursor: null, trail: [], resume: null })
 
 /** Where the tray card flew off to, so its exit animation points at its destination. */
 export interface TrayExit {
@@ -31,14 +43,10 @@ export interface State {
   editing: Editing
 
   // sort / plan
-  sortCursor: string | null
-  sortPending: Pending<Quadrant | null> | null
-  planCursor: string | null
-  planPending: Pending<Slot | null> | null
+  decks: { sort: Deck; plan: Deck }
   trayEditing: string | null
   trayExit: TrayExit
   landed: { id: string; n: number } | null
-  shake: number
 
   // overlays
   palette: { open: boolean; seed: string; nonce: number }
@@ -61,14 +69,10 @@ export const useStore = create<State>()(
         selectedId: null,
         editing: null,
 
-        sortCursor: null,
-        sortPending: null,
-        planCursor: null,
-        planPending: null,
+        decks: { sort: freshDeck(), plan: freshDeck() },
         trayEditing: null,
         trayExit: { x: 0, y: -1 },
         landed: null,
-        shake: 0,
 
         palette: { open: false, seed: '', nonce: 0 },
         helpOpen: false,

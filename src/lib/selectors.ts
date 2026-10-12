@@ -4,29 +4,18 @@ import type { Item } from './types'
 
 // ---------------------------------------------------------------- sort
 
-/** Order J/K walks in Sort: unsorted first, then each quadrant in grid order. */
-export function sortOrder(items: Item[]): Item[] {
-  return [
-    ...items.filter((i) => !i.quadrant),
-    ...QUADRANTS.flatMap((q) => items.filter((i) => i.quadrant === q.id)),
-  ]
+/** Sort's lists in reading order: the unsorted queue, then Do, Schedule, Delegate, Drop. */
+export function sortGroups(items: Item[]): Item[][] {
+  return [items.filter((i) => !i.quadrant), ...QUADRANTS.map((q) => items.filter((i) => i.quadrant === q.id))]
 }
+
+/** The order ↑/↓ walks in Sort. */
+export const sortOrder = (items: Item[]) => sortGroups(items).flat()
 
 /** The stored cursor if it still exists, else the first unsorted item. */
 export function resolveSortCursor(items: Item[], cursor: string | null): string | null {
   if (cursor && items.some((i) => i.id === cursor)) return cursor
   return items.find((i) => !i.quadrant)?.id ?? null
-}
-
-/** Next unsorted item after `currentId` in list order, wrapping around. */
-export function nextUnsorted(items: Item[], currentId: string): string | null {
-  const start = items.findIndex((i) => i.id === currentId)
-  const n = items.length
-  for (let k = 1; k <= n; k++) {
-    const it = items[(start + k + n) % n]
-    if (it.id !== currentId && !it.quadrant) return it.id
-  }
-  return null
 }
 
 // ---------------------------------------------------------------- plan
@@ -47,13 +36,13 @@ export function planQueue(items: Item[], today: string): Item[] {
     .map(({ item }) => item)
 }
 
-/** Order J/K walks in Plan: the queue, then planned items column by column. */
-export function planOrder(items: Item[], today: string): Item[] {
-  const planned = planColumns(today).flatMap((col) =>
-    items.filter((i) => isPlannable(i) && columnFor(i.slot, today) === col.key),
-  )
-  return [...planQueue(items, today), ...planned]
+/** Plan's lists in reading order: the unplanned queue, then each day, then Later. */
+export function planGroups(items: Item[], today: string): Item[][] {
+  return [planQueue(items, today), ...planColumns(today).map((col) => itemsInColumn(items, col.key, today))]
 }
+
+/** The order ↑/↓ walks in Plan. */
+export const planOrder = (items: Item[], today: string) => planGroups(items, today).flat()
 
 export function resolvePlanCursor(items: Item[], cursor: string | null, today: string): string | null {
   if (cursor && planOrder(items, today).some((i) => i.id === cursor)) return cursor

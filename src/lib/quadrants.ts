@@ -62,7 +62,3 @@ export const QUADRANT_BY_ID = Object.fromEntries(QUADRANTS.map((q) => [q.id, q])
 >
 
 export const QUADRANT_RANK: Record<Quadrant, number> = { do: 0, schedule: 1, delegate: 2, drop: 3 }
-
-export function quadrantAt(row: number, col: number): Quadrant {
-  return QUADRANTS.find((q) => q.row === row && q.col === col)!.id
-}

@@ -39,32 +39,28 @@ function hintsFor(s: State): Hint[] {
   if (s.trayEditing) return [h('enter', 'save'), h('escape', 'cancel')]
 
   if (s.mode === 'sort') {
-    if (!resolveSortCursor(s.items, s.sortCursor)) return [h('shift+3', 'plan'), h(['j', 'k'], 'revise'), h('mod+k', 'search')]
-    if (s.sortPending)
-      return [
-        h('enter', 'confirm'),
-        h(['up', 'down', 'left', 'right'], 'adjust'),
-        h('escape', 'cancel'),
-      ]
+    if (!resolveSortCursor(s.items, s.decks.sort.cursor))
+      return [h('shift+3', 'plan'), h('backspace', 'back'), h(['up', 'down'], 'revisit'), h('mod+k', 'search')]
     return [
-      h(['q', 'w', 'a', 's'], 'choose'),
+      h(['q', 'w', 'a', 's'], 'file'),
       h('1–4', 'also works', true),
-      h(['j', 'k'], 'skip'),
+      h(['up', 'down'], 'move'),
+      h(['left', 'right'], 'quadrant'),
+      h('backspace', 'back'),
       h('e', 'edit'),
       h('x', 'done'),
-      h('shift+q', 'assign + next'),
     ]
   }
 
-  if (!resolvePlanCursor(s.items, s.planCursor, todayKey()))
-    return [h('mod+k', 'export: search "copy" or "calendar"'), h(['j', 'k'], 'revise')]
-  if (s.planPending) return [h('enter', 'confirm'), h(['left', 'right'], 'adjust'), h('escape', 'cancel')]
+  if (!resolvePlanCursor(s.items, s.decks.plan.cursor, todayKey()))
+    return [h('mod+k', 'export: search "copy" or "calendar"'), h('backspace', 'back'), h(['up', 'down'], 'revisit')]
   return [
     h('1–7', 'day', true),
     h('8', 'later'),
     h('0', 'unplan'),
-    h(['left', 'right'], 'pick'),
-    h(['j', 'k'], 'skip'),
+    h(['up', 'down'], 'move'),
+    h(['left', 'right'], 'days'),
+    h('backspace', 'back'),
     h('x', 'done'),
   ]
 }
@@ -79,7 +75,7 @@ export function StatusBar() {
       <span className="statusbar__mode">{MODE_LABEL[state.mode]}</span>
       <div className="statusbar__hints">
         {hints.map((hint) => (
-          <span key={hint.label} className="hint">
+          <span key={`${hint.keys.join()}:${hint.label}`} className="hint">
             <span className="keys">
               {hint.keys.map((k) => (hint.literal ? <Kbd key={k} label={k} size="xs" /> : <Kbd key={k} k={k} size="xs" />))}
             </span>

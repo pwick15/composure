@@ -1,14 +1,16 @@
 import { AnimatePresence, motion, type Variants } from 'motion/react'
-import { useEffect, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 import { feedback } from '../keyboard/feedback'
 import { autosize } from '../lib/dom'
 import { SPRING } from '../lib/motion'
 import type { Item } from '../lib/types'
-import { trayCancel, trayCommit } from '../state/actions'
+import { trayCancel, trayCommit, truncate } from '../state/actions'
 import { getState, useStore, type TrayExit } from '../state/store'
 import { Kbd } from './Kbd'
 
-export interface TrayTarget {
+/** What the last filing key did, shown under the card with the way back. */
+export interface Receipt {
+  item: Item
   label: string
   /** A quadrant id, or "accent" for days. */
   tone: string
@@ -19,12 +21,12 @@ interface TrayProps {
   done: number
   total: number
   current: Item | null
-  /** How many more items wait behind the current one. */
+  /** How many more thoughts wait in the queue behind the current one. */
   ahead: number
-  target: TrayTarget | null
   tags: ReactNode
   idle: ReactNode
   empty: ReactNode
+  receipt: Receipt | null
 }
 
 const variants: Variants = {
@@ -73,23 +75,9 @@ function TrayEditor({ item }: { item: Item }) {
   )
 }
 
-export function Tray({ label, done, total, current, ahead, target, tags, idle, empty }: TrayProps) {
+export function Tray({ label, done, total, current, ahead, tags, idle, empty, receipt }: TrayProps) {
   const exit = useStore((s) => s.trayExit)
   const editing = useStore((s) => s.trayEditing)
-  const shake = useStore((s) => s.shake)
-  const inner = useRef<HTMLDivElement>(null)
-  const lastShake = useRef(shake)
-
-  useEffect(() => {
-    if (shake === lastShake.current) return
-    lastShake.current = shake
-    const el = inner.current
-    if (!el) return
-    el.classList.remove('is-shaking')
-    void el.offsetWidth
-    el.classList.add('is-shaking')
-  }, [shake])
-
   const pct = total ? (done / total) * 100 : 0
 
   return (
@@ -113,15 +101,13 @@ export function Tray({ label, done, total, current, ahead, target, tags, idle, e
             <motion.article
               key={current.id}
               className="card"
-              data-q={target?.tone}
-              data-target={target ? '' : undefined}
               custom={exit}
               variants={variants}
               initial="enter"
               animate="center"
               exit="exit"
             >
-              <div ref={inner} className="card__inner">
+              <div className="card__inner">
                 <div className="card__top">{tags}</div>
                 {editing === current.id ? (
                   <TrayEditor item={current} />
@@ -131,40 +117,13 @@ export function Tray({ label, done, total, current, ahead, target, tags, idle, e
                   </p>
                 )}
                 <div className="card__foot">
-                  <AnimatePresence mode="wait" initial={false}>
-                    {target ? (
-                      <motion.span
-                        key={`t-${target.label}`}
-                        className="card__target"
-                        initial={{ opacity: 0, x: -6 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, transition: { duration: 0.05 } }}
-                        transition={{ duration: 0.12 }}
-                      >
-                        → {target.label}
-                        <span className="card__confirm">
-                          <Kbd k="enter" size="xs" /> confirm
-                        </span>
-                      </motion.span>
-                    ) : (
-                      <motion.span
-                        key="idle"
-                        className="card__idle"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0, transition: { duration: 0.05 } }}
-                        transition={{ duration: 0.12 }}
-                      >
-                        {editing === current.id ? (
-                          <>
-                            <Kbd k="enter" size="xs" /> save <Kbd k="escape" size="xs" /> cancel
-                          </>
-                        ) : (
-                          idle
-                        )}
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
+                  {editing === current.id ? (
+                    <span className="card__idle">
+                      <Kbd k="enter" size="xs" /> save <Kbd k="escape" size="xs" /> cancel
+                    </span>
+                  ) : (
+                    <span className="card__idle">{idle}</span>
+                  )}
                 </div>
               </div>
             </motion.article>
@@ -178,6 +137,29 @@ export function Tray({ label, done, total, current, ahead, target, tags, idle, e
             >
               {empty}
             </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <div className="tray__receipt" aria-live="polite">
+        <AnimatePresence mode="popLayout" initial={false}>
+          {receipt && (
+            <motion.span
+              key={`${receipt.item.id}:${receipt.label}`}
+              className="receipt"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4, transition: { duration: 0.1 } }}
+            >
+              <span className="receipt__text">"{truncate(receipt.item.text, 40)}"</span>
+              <span className="receipt__arrow">→</span>
+              <span className="receipt__dest" data-q={receipt.tone}>
+                {receipt.label}
+              </span>
+              <span className="receipt__back">
+                <Kbd k="backspace" size="xs" /> back
+              </span>
+            </motion.span>
           )}
         </AnimatePresence>
       </div>

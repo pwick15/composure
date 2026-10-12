@@ -5,8 +5,10 @@ A keyboard-first place to empty your head when there's too much in it, sort what
 Three modes, one flow:
 
 1. **Dump** (`⇧1`). Start typing anywhere. `↵` saves the line and opens the next one. Paste a list and every line becomes a thought.
-2. **Sort** (`⇧2`). One thought at a time goes into an Eisenhower matrix. `Q W A S` (or `1 2 3 4`) picks a quadrant, `↵` confirms and moves on. `⇧Q` etc. assigns and moves on in one press.
-3. **Plan** (`⇧3`). Slot what matters into the next seven days. `1`–`7` picks a day, `8` is "later", `← →` nudges, `↵` confirms.
+2. **Sort** (`⇧2`). One thought at a time goes into an Eisenhower matrix. `Q W A S` (or `1 2 3 4`) files it and moves straight to the next one, no confirm step.
+3. **Plan** (`⇧3`). Slot what matters into the next seven days. `1`–`7` picks a day, `8` is "later", `0` unplans. Again, it applies at once.
+
+Sort and Plan share the same navigation. Got one wrong? `⌫` brings back the last thing you filed (press again to go further back) and `⌘Z` undoes it. A line under the card always shows what just happened. `↑ ↓` walk the whole list, `← →` jump between quadrants or days, and the selected thought is highlighted where it lives. Filing a thought you moved to takes you back to where you left the queue. `↵` keeps the selected thought as it is and moves on.
 
 `⌘K` searches every command, shortcut and thought. In Sort and Plan, typing any letter that isn't a shortcut opens search with that letter, Things 3 style. `?` shows every shortcut.
 
