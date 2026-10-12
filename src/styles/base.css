@@ -1,0 +1,260 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-fg);
+  outline-offset: 2px;
+}
+
+textarea:focus-visible,
+input:focus-visible {
+  outline: none;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.eyebrow {
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.keys {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+/* ------------------------------------------------------------------ keycap */
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  font: 500 11px/1 var(--font-mono);
+  color: var(--text-2);
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  vertical-align: middle;
+  transition:
+    color 120ms,
+    border-color 120ms;
+}
+
+.kbd--xs {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  font-size: 10px;
+}
+
+.kbd--md {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.kbd--lg {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom-width: 3px;
+}
+
+/* The press: the cap sinks and lights up, then springs back. */
+.kbd.is-hit {
+  animation: kbd-hit 280ms var(--ease-out);
+}
+
+@keyframes kbd-hit {
+  0% {
+    transform: translateY(1px) scale(0.92);
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------------ tag */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font: 500 11px/1 var(--font-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.tag[data-q]::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--q);
+}
+
+.tag--muted {
+  color: var(--text-3);
+}
+
+.tag--overdue {
+  color: var(--q-do);
+  border-color: color-mix(in srgb, var(--q-do) 40%, var(--line));
+}
+
+.tag--done {
+  color: var(--accent-fg);
+  border-color: color-mix(in srgb, var(--accent-fg) 40%, var(--line));
+}
+
+/* ------------------------------------------------------------------ buttons */
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 120ms,
+    background 120ms,
+    transform 80ms;
+}
+
+.cta:hover {
+  border-color: var(--accent-fg);
+}
+
+.cta:active {
+  transform: translateY(1px);
+}
+
+.cta--inline {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.prompt-glyph {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--accent-fg);
+}
+
+.caret-block {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.1em;
+  background: var(--accent);
+  vertical-align: text-bottom;
+  animation: blink 1.1s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: none;
+  }
+  20% {
+    transform: translateX(-7px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret-block,
+  .brand__mark {
+    animation: none;
+  }
+  .kbd.is-hit {
+    animation-duration: 400ms;
+  }
+  @keyframes kbd-hit {
+    0% {
+      background: var(--accent);
+      color: var(--accent-ink);
+    }
+  }
+}

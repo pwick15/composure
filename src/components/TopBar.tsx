@@ -1,0 +1,75 @@
+import { motion } from 'motion/react'
+import { useMemo } from 'react'
+import { todayKey } from '../lib/dates'
+import { keepFocus, SNAP } from '../lib/motion'
+import { planQueue } from '../lib/selectors'
+import type { Mode } from '../lib/types'
+import { openPalette, setMode, toggleHelp } from '../state/actions'
+import { useStore } from '../state/store'
+import { Kbd } from './Kbd'
+
+const TABS: { mode: Mode; label: string; key: string }[] = [
+  { mode: 'dump', label: 'Dump', key: 'shift+1' },
+  { mode: 'sort', label: 'Sort', key: 'shift+2' },
+  { mode: 'plan', label: 'Plan', key: 'shift+3' },
+]
+
+export function TopBar() {
+  const mode = useStore((s) => s.mode)
+  const items = useStore((s) => s.items)
+
+  const counts = useMemo(() => {
+    const unsorted = items.filter((i) => !i.quadrant).length
+    const unplanned = planQueue(items, todayKey()).length
+    return {
+      dump: items.length ? String(items.length) : '',
+      sort: items.length ? (unsorted ? `${unsorted} left` : '✓') : '',
+      plan: items.length ? (unplanned ? `${unplanned} left` : '✓') : '',
+    }
+  }, [items])
+
+  return (
+    <header className="topbar">
+      <div className="brand" aria-label="Composure">
+        <span className="brand__mark" aria-hidden />
+        <span className="brand__name">composure</span>
+      </div>
+
+      <nav className="tabs" role="tablist" aria-label="Mode">
+        {TABS.map((t) => {
+          const active = mode === t.mode
+          return (
+            <button
+              key={t.mode}
+              role="tab"
+              aria-selected={active}
+              className="tab"
+              data-active={active}
+              onMouseDown={keepFocus}
+              onClick={() => setMode(t.mode)}
+            >
+              {active && <motion.span layoutId="tab-bg" className="tab__bg" transition={SNAP} />}
+              <Kbd k={t.key} size="xs" className="tab__key" />
+              <span className="tab__label">{t.label}</span>
+              {counts[t.mode] && <span className="tab__count">{counts[t.mode]}</span>}
+            </button>
+          )
+        })}
+      </nav>
+
+      <div className="topbar__actions">
+        <button className="ghost-btn" onMouseDown={keepFocus} onClick={() => openPalette()}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+            <circle cx="7" cy="7" r="4.75" stroke="currentColor" strokeWidth="1.5" />
+            <path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <span className="ghost-btn__label">Search</span>
+          <Kbd k="mod+k" size="xs" also={['/']} />
+        </button>
+        <button className="ghost-btn ghost-btn--icon" onMouseDown={keepFocus} onClick={toggleHelp} aria-label="Keyboard shortcuts">
+          <Kbd k="?" size="xs" />
+        </button>
+      </div>
+    </header>
+  )
+}

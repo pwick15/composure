@@ -1,0 +1,158 @@
+import { describe, expect, it } from 'vitest'
+import { addDays, columnFor, LATER, planColumns, slotLabel } from './dates'
+import { matrixMarkdown, parseBackup, planICS, planMarkdown, thingsURL } from './export'
+import { fuzzyBest, fuzzyMatch } from './fuzzy'
+import { nextUnsorted, planQueue, sortOrder } from './selectors'
+import { splitLines } from './text'
+import type { Item } from './types'
+
+const TODAY = '2026-10-12' // a Monday
+
+let n = 0
+const item = (text: string, extra: Partial<Item> = {}): Item => ({
+  id: `i${++n}`,
+  text,
+  createdAt: 0,
+  quadrant: null,
+  slot: null,
+  done: false,
+  ...extra,
+})
+
+describe('fuzzyMatch', () => {
+  it('ranks a prefix above a mid-word substring above a scattered match', () => {
+    const prefix = fuzzyMatch('sort', 'Sort mode')!.score
+    const mid = fuzzyMatch('sort', 'Resort booking')!.score
+    const scattered = fuzzyMatch('sort', 'Send our report today')!.score
+    expect(prefix).toBeGreaterThan(mid)
+    expect(mid).toBeGreaterThan(scattered)
+  })
+
+  it('returns highlight indices and null on a miss', () => {
+    expect(fuzzyMatch('cal', 'Download calendar')!.indices).toEqual([9, 10, 11])
+    expect(fuzzyMatch('xyz', 'Download calendar')).toBeNull()
+  })
+
+  it('prefers word starts for scattered matches', () => {
+    expect(fuzzyMatch('dc', 'Download calendar')!.indices).toEqual([0, 9])
+  })
+
+  it('matches keywords without highlighting the label', () => {
+    const m = fuzzyBest('eisenhower', 'Sort mode', 'eisenhower matrix')
+    expect(m).not.toBeNull()
+    expect(m!.indices).toEqual([])
+  })
+})
+
+describe('dates', () => {
+  it('builds a 7-day window plus Later', () => {
+    const cols = planColumns(TODAY)
+    expect(cols.map((c) => c.label)).toEqual(['Today', 'Tomorrow', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Later'])
+    expect(cols.filter((c) => c.weekend).map((c) => c.label)).toEqual(['Sat', 'Sun'])
+  })
+
+  it('crosses month and year boundaries', () => {
+    expect(addDays('2026-10-31', 1)).toBe('2026-11-01')
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01')
+  })
+
+  it('maps slots to columns', () => {
+    expect(columnFor(null, TODAY)).toBeNull()
+    expect(columnFor('2026-10-11', TODAY)).toBeNull() // overdue goes back to the queue
+    expect(columnFor('2026-10-14', TODAY)).toBe('2026-10-14')
+    expect(columnFor('2026-10-30', TODAY)).toBe(LATER) // beyond the window
+    expect(columnFor(LATER, TODAY)).toBe(LATER)
+    expect(slotLabel('2026-10-10', TODAY)).toBe('Overdue · Sat 10 Oct')
+  })
+})
+
+describe('splitLines', () => {
+  it('strips bullets, numbers and checkboxes', () => {
+    expect(splitLines('- milk\n* eggs\n1. call mum\n- [ ] taxes\n[x] done thing\n\n  •  rent  ')).toEqual([
+      'milk',
+      'eggs',
+      'call mum',
+      'taxes',
+      'done thing',
+      'rent',
+    ])
+  })
+})
+
+describe('selectors', () => {
+  it('walks unsorted first, then quadrants in grid order', () => {
+    const items = [item('a', { quadrant: 'drop' }), item('b'), item('c', { quadrant: 'do' })]
+    expect(sortOrder(items).map((i) => i.text)).toEqual(['b', 'c', 'a'])
+  })
+
+  it('finds the next unsorted item, wrapping', () => {
+    const items = [item('a'), item('b', { quadrant: 'do' }), item('c')]
+    expect(nextUnsorted(items, items[2].id)).toBe(items[0].id)
+    expect(nextUnsorted([items[0]], items[0].id)).toBeNull()
+  })
+
+  it('queues overdue first, then by quadrant, and leaves out dropped and done', () => {
+    const items = [
+      item('unsorted'),
+      item('schedule', { quadrant: 'schedule' }),
+      item('do', { quadrant: 'do' }),
+      item('overdue', { quadrant: 'delegate', slot: '2026-10-01' }),
+      item('dropped', { quadrant: 'drop' }),
+      item('done', { quadrant: 'do', done: true }),
+      item('planned', { quadrant: 'do', slot: TODAY }),
+    ]
+    expect(planQueue(items, TODAY).map((i) => i.text)).toEqual(['overdue', 'do', 'schedule', 'unsorted'])
+  })
+})
+
+describe('export', () => {
+  const items = [
+    item('Pay rent, today; really', { quadrant: 'do', slot: TODAY }),
+    item('Plan trip', { quadrant: 'schedule', slot: '2026-10-14' }),
+    item('Someday thing', { quadrant: 'schedule', slot: LATER }),
+    item('Unplanned', { quadrant: 'do' }),
+    item('Dropped', { quadrant: 'drop', slot: TODAY }),
+  ]
+
+  it('writes Markdown grouped by day', () => {
+    const md = planMarkdown(items, TODAY)
+    expect(md).toContain('## Today · Mon 12 Oct\n- [ ] Pay rent, today; really')
+    expect(md).toContain('## Wed 14 Oct\n- [ ] Plan trip')
+    expect(md).toContain('## Later\n- [ ] Someday thing')
+    expect(md).toContain('## Not planned yet\n- [ ] Unplanned (Do)')
+    expect(md).not.toContain('Dropped')
+    expect(matrixMarkdown(items)).toContain('## Drop (Not urgent · Not important)\n- [ ] Dropped')
+  })
+
+  it('writes valid all-day iCalendar events with escaping', () => {
+    const ics = planICS(items, TODAY, new Date('2026-10-12T09:30:00Z'))!
+    expect(ics.split('\r\n').filter((l) => l === 'BEGIN:VEVENT')).toHaveLength(2)
+    expect(ics).toContain('DTSTART;VALUE=DATE:20261012\r\nDTEND;VALUE=DATE:20261013')
+    expect(ics).toContain('SUMMARY:Pay rent\\, today\\; really')
+    expect(ics).toContain('DTSTAMP:20261012T093000Z')
+    expect(ics).not.toContain('Dropped')
+  })
+
+  it('folds long iCalendar lines at 75 octets', () => {
+    const long = [item('x'.repeat(200), { slot: TODAY })]
+    const lines = planICS(long, TODAY)!.split('\r\n')
+    expect(lines.every((l) => new TextEncoder().encode(l).length <= 75)).toBe(true)
+    expect(lines.some((l) => l.startsWith(' x'))).toBe(true)
+  })
+
+  it('builds a Things URL with the right "when" values', () => {
+    const url = thingsURL(items, TODAY)!
+    const data = JSON.parse(decodeURIComponent(url.split('data=')[1].split('&')[0]))
+    expect(data.map((t: { attributes: { when: string } }) => t.attributes.when)).toEqual([
+      'today',
+      '2026-10-14',
+      'someday',
+    ])
+  })
+
+  it('rejects files that are not backups', () => {
+    expect(() => parseBackup('{"hello":1}')).toThrow('Not a Composure backup')
+    const ok = parseBackup(JSON.stringify({ app: 'composure', version: 1, items: [{ id: 'a', text: 'x', quadrant: 'nope' }] }))
+    expect(ok[0]).toMatchObject({ id: 'a', text: 'x', quadrant: null, slot: null, done: false })
+  })
+})

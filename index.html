@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A keyboard-first space to empty your head, sort it, and plan the week." />
+    <meta name="theme-color" content="#0b0c0e" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f4f3ee" media="(prefers-color-scheme: light)" />
+    <title>Composure</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a flash.
+      try {
+        var saved = JSON.parse(localStorage.getItem('composure:v1') || '{}')
+        if (saved.state && saved.state.theme) document.documentElement.dataset.theme = saved.state.theme
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,231 @@
+.dump {
+  flex: 1;
+  overflow-y: auto;
+  scroll-padding: 96px 0;
+}
+
+.dump__inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 56px 24px 180px;
+}
+
+.dump__head h1 {
+  margin: 10px 0 8px;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.lede {
+  color: var(--text-2);
+}
+
+/* ------------------------------------------------------------------ list */
+
+.dump__list {
+  position: relative;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: start;
+  min-height: 46px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  cursor: text;
+}
+
+.row:first-child {
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+}
+
+.row:last-child {
+  border-bottom: 0;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+}
+
+.row__index {
+  align-self: stretch;
+  padding-top: 14px;
+  border-right: 1px solid var(--line);
+  font: 12px/18px var(--font-mono);
+  color: var(--text-3);
+  text-align: center;
+  user-select: none;
+}
+
+.row__index--prompt {
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+
+.row__text,
+.row__input {
+  display: block;
+  margin: 0;
+  padding: 13px 14px;
+  font: 15px/20px var(--font-sans);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.row__input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  resize: none;
+  overflow: hidden;
+  caret-color: var(--accent-fg);
+}
+
+.row__input::placeholder {
+  color: var(--text-3);
+}
+
+.row__meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 12px 0 0;
+}
+
+.row__meta--hint {
+  gap: 6px;
+  font: 11px/20px var(--font-mono);
+  color: var(--text-3);
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
+}
+
+.row[data-selected],
+.row[data-editing] {
+  background: var(--surface-2);
+}
+
+.row[data-selected]::before,
+.row[data-editing]::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  bottom: -1px;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.row[data-editing] .row__index {
+  color: var(--accent-fg);
+}
+
+.row[data-done] .row__text {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-3);
+}
+
+/* ------------------------------------------------------------------ footer + empty */
+
+.dump__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.add-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  font: 12px var(--font-mono);
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.add-line:hover {
+  color: var(--text-2);
+}
+
+.dump-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  margin-top: 28px;
+  padding: 28px 26px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  text-align: left;
+  cursor: text;
+}
+
+.dump-empty__prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+}
+
+.dump-empty__title {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.dump-empty__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font: 12px var(--font-mono);
+  color: var(--text-3);
+}
+
+.dump-empty__keys > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+@media (max-width: 720px) {
+  .dump__inner {
+    padding: 28px 16px 140px;
+  }
+  .dump__head h1 {
+    font-size: 24px;
+  }
+  .row {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+  .row__index {
+    grid-row: span 2;
+  }
+  .row__meta {
+    grid-column: 2;
+    flex-wrap: wrap;
+    padding: 0 14px 10px;
+  }
+  .row__meta:empty {
+    display: none;
+  }
+}
