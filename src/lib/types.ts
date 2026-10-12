@@ -1,4 +1,4 @@
-export type Mode = 'dump' | 'sort' | 'plan'
+export type Mode = 'dump' | 'sort' | 'plan' | 'today'
 
 export type Quadrant = 'do' | 'schedule' | 'delegate' | 'drop'
 

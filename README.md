@@ -2,11 +2,13 @@
 
 A keyboard-first place to empty your head when there's too much in it, sort what came out, and give the important things a day.
 
-Three modes, one flow:
+Four screens, one flow. `⌥←` / `⌥→` step between them; `⇧1`–`⇧4` jump straight there.
 
 1. **Dump** (`⇧1`). Start typing anywhere. `↵` saves the line and opens the next one; double-tap `⇧` (or `esc`) to finish. `⇧↑ ⇧↓` reorder. Paste a list and every line becomes a thought.
 2. **Sort** (`⇧2`). One thought at a time goes into an Eisenhower matrix. `Q W A S` files it and moves straight to the next one, no confirm step.
 3. **Plan** (`⇧3`). Slot what matters into the next seven days. `1`–`7` picks a day, `8` is "later", `0` unplans. Again, it applies at once.
+
+4. **Today** (`⇧4`). Only today's plan plus anything overdue. `X` ticks it off and moves to the next open thing, `T` means "not today" (moves it to tomorrow), `F` starts a 25-minute focus block that shows in the top bar on every screen. A clarity line ("14 out of your head · 4 let go · 3 for today") shows how much lighter things got.
 
 Sort and Plan share the same navigation. Got one wrong? `⌫` brings back the last thing you filed (press again to go further back) and `⌘Z` undoes it. A line under the card always shows what just happened. `↑ ↓` walk the whole list, `← →` jump between quadrants or days, `⇧` + arrows move the thought itself (to another quadrant, or a day earlier/later), and the selected thought is highlighted where it lives. Filing a thought you moved to takes you back to where you left the queue. `↵` keeps the selected thought as it is and moves on.
 

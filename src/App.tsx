@@ -1,5 +1,5 @@
 import { motion, MotionConfig } from 'motion/react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { CommandPalette } from './components/CommandPalette'
 import { KeystrokeHUD } from './components/KeystrokeHUD'
 import { ShortcutSheet } from './components/ShortcutSheet'
@@ -11,9 +11,11 @@ import { SPRING } from './lib/motion'
 import { DumpMode } from './modes/DumpMode'
 import { PlanMode } from './modes/PlanMode'
 import { SortMode } from './modes/SortMode'
+import { TodayMode } from './modes/TodayMode'
 import { useStore } from './state/store'
 
-const VIEWS = { dump: DumpMode, sort: SortMode, plan: PlanMode }
+const VIEWS = { dump: DumpMode, sort: SortMode, plan: PlanMode, today: TodayMode }
+const ORDER = ['dump', 'sort', 'plan', 'today']
 
 export default function App() {
   const mode = useStore((s) => s.mode)
@@ -26,6 +28,14 @@ export default function App() {
 
   const View = VIEWS[mode]
 
+  // Screens sit side by side: moving right slides the next one in from the right.
+  const [prevMode, setPrevMode] = useState(mode)
+  const [dir, setDir] = useState(0)
+  if (prevMode !== mode) {
+    setDir(Math.sign(ORDER.indexOf(mode) - ORDER.indexOf(prevMode)))
+    setPrevMode(mode)
+  }
+
   return (
     <MotionConfig reducedMotion="user" transition={SPRING}>
       <div className="app">
@@ -34,8 +44,8 @@ export default function App() {
           <motion.div
             key={mode}
             className="stage__view"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, x: dir * 28, y: dir ? 0 : 6 }}
+            animate={{ opacity: 1, x: 0, y: 0 }}
             transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
           >
             <View />

@@ -2,16 +2,18 @@ import { motion } from 'motion/react'
 import { useMemo } from 'react'
 import { todayKey } from '../lib/dates'
 import { keepFocus, SNAP } from '../lib/motion'
-import { planQueue } from '../lib/selectors'
+import { planQueue, todayList } from '../lib/selectors'
 import type { Mode } from '../lib/types'
 import { openPalette, setMode, toggleHelp } from '../state/actions'
 import { useStore } from '../state/store'
+import { FocusPill } from './FocusPill'
 import { Kbd } from './Kbd'
 
 const TABS: { mode: Mode; label: string; key: string }[] = [
   { mode: 'dump', label: 'Dump', key: 'shift+1' },
   { mode: 'sort', label: 'Sort', key: 'shift+2' },
   { mode: 'plan', label: 'Plan', key: 'shift+3' },
+  { mode: 'today', label: 'Today', key: 'shift+4' },
 ]
 
 export function TopBar() {
@@ -21,10 +23,13 @@ export function TopBar() {
   const counts = useMemo(() => {
     const unsorted = items.filter((i) => !i.quadrant).length
     const unplanned = planQueue(items, todayKey()).length
+    const today = todayList(items, todayKey())
+    const open = today.filter((i) => !i.done).length
     return {
       dump: items.length ? String(items.length) : '',
       sort: items.length ? (unsorted ? `${unsorted} left` : '✓') : '',
       plan: items.length ? (unplanned ? `${unplanned} left` : '✓') : '',
+      today: today.length ? (open ? `${open} left` : '✓') : '',
     }
   }, [items])
 
@@ -58,6 +63,7 @@ export function TopBar() {
       </nav>
 
       <div className="topbar__actions">
+        <FocusPill />
         <button className="ghost-btn" onMouseDown={keepFocus} onClick={() => openPalette()}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
             <circle cx="7" cy="7" r="4.75" stroke="currentColor" strokeWidth="1.5" />

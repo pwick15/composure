@@ -48,6 +48,11 @@ export interface State {
   trayExit: TrayExit
   landed: { id: string; n: number } | null
 
+  // today
+  todayCursor: string | null
+  /** A running focus block on one thought. Persisted, so it survives a reload. */
+  focus: { id: string; endsAt: number; minutes: number } | null
+
   // overlays
   palette: { open: boolean; seed: string; nonce: number }
   helpOpen: boolean
@@ -74,6 +79,9 @@ export const useStore = create<State>()(
         trayExit: { x: 0, y: -1 },
         landed: null,
 
+        todayCursor: null,
+        focus: null,
+
         palette: { open: false, seed: '', nonce: 0 },
         helpOpen: false,
         toasts: [],
@@ -85,7 +93,7 @@ export const useStore = create<State>()(
       name: 'composure:v1',
       version: 1,
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ items: s.items, mode: s.mode, theme: s.theme, hud: s.hud }),
+      partialize: (s) => ({ items: s.items, mode: s.mode, theme: s.theme, hud: s.hud, focus: s.focus }),
     },
   ),
 )

@@ -213,3 +213,46 @@ describe('history', () => {
     vi.useRealTimers()
   })
 })
+
+describe('today', () => {
+  const plannedToday = (...texts: string[]) => {
+    dump(...texts)
+    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do' as const, slot: todayKey() })) })
+    a.setMode('today')
+  }
+
+  it('ticking off moves to the next open thing', () => {
+    plannedToday('a', 'b', 'c')
+    a.todayToggle()
+    expect(getState().items.find((i) => i.text === 'a')!.done).toBe(true)
+    expect(a.todayCurrent()?.text).toBe('b')
+  })
+
+  it('T moves it to tomorrow and selects the next', () => {
+    plannedToday('a', 'b')
+    a.todayDefer()
+    expect(getState().items.find((i) => i.text === 'a')!.slot).toBe(addDays(todayKey(), 1))
+    expect(a.todayCurrent()?.text).toBe('b')
+    a.undo()
+    expect(getState().items.find((i) => i.text === 'a')!.slot).toBe(todayKey())
+  })
+
+  it('F starts a focus block, F again stops it, finishing a task ends it', () => {
+    plannedToday('a')
+    a.focusToggle()
+    expect(getState().focus?.id).toBe(getState().items[0].id)
+    a.focusToggle()
+    expect(getState().focus).toBeNull()
+    a.focusToggle()
+    a.todayToggle()
+    expect(getState().focus).toBeNull()
+  })
+
+  it('⌥→ steps through screens and stops at the ends', () => {
+    a.setMode('plan')
+    a.cycleMode(1)
+    expect(getState().mode).toBe('today')
+    a.cycleMode(1)
+    expect(getState().mode).toBe('today')
+  })
+})

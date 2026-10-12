@@ -30,11 +30,21 @@ function hintsFor(s: State): Hint[] {
     return [
       h('a–z', 'type to add', true),
       h(['up', 'down'], 'select'),
-      h('shift+2', 'sort'),
+      h('alt+right', 'next screen'),
       h('mod+k', 'search'),
       h('?', 'shortcuts'),
     ]
   }
+
+  if (s.mode === 'today')
+    return [
+      h(['up', 'down'], 'move'),
+      h('x', 'done'),
+      h('t', 'not today'),
+      h('f', s.focus ? 'focus on/off' : 'focus 25 min'),
+      h(['shift+up', 'shift+down'], 'reorder'),
+      h('alt+left', 'plan'),
+    ]
 
   if (s.trayEditing) return [h('enter', 'save'), h('escape', 'cancel')]
 
@@ -66,7 +76,7 @@ function hintsFor(s: State): Hint[] {
   ]
 }
 
-const MODE_LABEL = { dump: 'DUMP', sort: 'SORT', plan: 'PLAN' }
+const MODE_LABEL = { dump: 'DUMP', sort: 'SORT', plan: 'PLAN', today: 'TODAY' }
 
 export function StatusBar() {
   const state = useStore()

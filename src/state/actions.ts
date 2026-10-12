@@ -1,4 +1,4 @@
-import { columnFor, planColumns, todayKey } from '../lib/dates'
+import { addDays, columnFor, planColumns, todayKey } from '../lib/dates'
 import { uid } from '../lib/id'
 import { QUADRANTS, QUADRANT_BY_ID } from '../lib/quadrants'
 import {
@@ -7,7 +7,9 @@ import {
   planGroups,
   resolvePlanCursor,
   resolveSortCursor,
+  resolveTodayCursor,
   sortGroups,
+  todayList,
 } from '../lib/selectors'
 import type { Item, Mode, Quadrant } from '../lib/types'
 import { type Deck, type Editing, freshDeck, getState as get, setState as set, type TrayExit } from './store'
@@ -179,12 +181,13 @@ function resetCursors() {
     decks: { sort: freshDeck(), plan: freshDeck() },
     trayEditing: null,
     landed: null,
+    todayCursor: null,
   })
 }
 
 // ---------------------------------------------------------------- modes
 
-const MODES: Mode[] = ['dump', 'sort', 'plan']
+const MODES: Mode[] = ['dump', 'sort', 'plan', 'today']
 
 export function setMode(mode: Mode) {
   if (get().mode === mode) return
@@ -192,9 +195,11 @@ export function setMode(mode: Mode) {
   resetCursors()
 }
 
+/** ⌥←/⌥→: step to the neighbouring screen, stopping at the ends like pages. */
 export function cycleMode(dir: -1 | 1) {
   const i = MODES.indexOf(get().mode)
-  setMode(MODES[(i + dir + MODES.length) % MODES.length])
+  const next = MODES[i + dir]
+  if (next) setMode(next)
 }
 
 // ---------------------------------------------------------------- dump
@@ -574,11 +579,104 @@ export function trayDelete() {
   toast(`Deleted "${truncate(cur.text)}"`, 'mod+z')
 }
 
+// ---------------------------------------------------------------- today
+
+export function todayCurrent(): Item | null {
+  const s = get()
+  return findItem(resolveTodayCursor(s.items, s.todayCursor, todayKey())) ?? null
+}
+
+function nothingToday() {
+  toast('Nothing planned for today', 'shift+3')
+}
+
+export function todayMove(dir: -1 | 1) {
+  const list = todayList(get().items, todayKey())
+  if (!list.length) return nothingToday()
+  const cur = todayCurrent()
+  const i = list.findIndex((it) => it.id === cur?.id)
+  set({ todayCursor: list[clamp(i + dir, 0, list.length - 1)].id })
+}
+
+/** X / Space: tick it off, then move to the next thing still open. */
+export function todayToggle() {
+  const cur = todayCurrent()
+  if (!cur) return nothingToday()
+  patch(cur.id, { done: !cur.done })
+  if (cur.done) return toast('Reopened', 'x')
+  const s = get()
+  if (s.focus?.id === cur.id) set({ focus: null })
+  const list = todayList(s.items, todayKey())
+  const i = list.findIndex((it) => it.id === cur.id)
+  const next = [...list.slice(i + 1), ...list.slice(0, i)].find((it) => !it.done)
+  set({ todayCursor: next?.id ?? cur.id })
+  toast(next ? 'Done. Next up' : "Done. That's everything for today", 'mod+z')
+}
+
+/** T: not today. Moves it to tomorrow without guilt (and without losing it). */
+export function todayDefer() {
+  const cur = todayCurrent()
+  if (!cur) return nothingToday()
+  const list = todayList(get().items, todayKey())
+  const i = list.findIndex((it) => it.id === cur.id)
+  const next = list[i + 1] ?? list[i - 1]
+  patch(cur.id, { slot: addDays(todayKey(), 1) })
+  set({ todayCursor: next?.id ?? null })
+  toast(`"${truncate(cur.text, 24)}" moved to tomorrow`, 'mod+z')
+}
+
+export function todayReorder(dir: -1 | 1) {
+  const cur = todayCurrent()
+  if (!cur) return nothingToday()
+  const list = todayList(get().items, todayKey())
+  const other = list[list.findIndex((it) => it.id === cur.id) + dir]
+  if (!other) return
+  const items = [...get().items]
+  const a = items.findIndex((it) => it.id === cur.id)
+  const b = items.findIndex((it) => it.id === other.id)
+  ;[items[a], items[b]] = [items[b], items[a]]
+  commit(items)
+}
+
+export function todayFocus(id: string) {
+  set({ todayCursor: id })
+}
+
+// ---------------------------------------------------------------- focus timer
+
+const FOCUS_MINUTES = 25
+
+/** F: start a focus block on the selected thought, or stop the one running on it. */
+export function focusToggle() {
+  const cur = todayCurrent()
+  if (!cur) return nothingToday()
+  const { focus } = get()
+  if (focus?.id === cur.id) return focusStop()
+  set({ focus: { id: cur.id, endsAt: Date.now() + FOCUS_MINUTES * 60_000, minutes: FOCUS_MINUTES } })
+  toast(`${FOCUS_MINUTES} minutes on "${truncate(cur.text, 24)}"`, 'f')
+}
+
+export function focusStop() {
+  if (!get().focus) return toast('No focus block running')
+  set({ focus: null })
+  toast('Focus block stopped')
+}
+
+/** Called by the timer when the block runs out. */
+export function focusFinished() {
+  const { focus, items } = get()
+  if (!focus) return
+  const item = items.find((i) => i.id === focus.id)
+  set({ focus: null })
+  toast(item ? `Time. How did "${truncate(item.text, 24)}" go? X to tick it off` : 'Focus block finished')
+}
+
 // ---------------------------------------------------------------- navigation
 
 export function jumpTo(id: string) {
   const { mode } = get()
   if (isDeck(mode) && inDeck(mode, id)) return deckFocus(mode, id)
+  if (mode === 'today' && todayList(get().items, todayKey()).some((i) => i.id === id)) return todayFocus(id)
   setMode('dump')
   set({ selectedId: id })
 }

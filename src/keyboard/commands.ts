@@ -5,9 +5,9 @@ import * as a from '../state/actions'
 import * as x from '../state/exporters'
 import { parseCombo, matchCombo } from './keys'
 
-export type Group = 'Modes' | 'General' | 'Dump' | 'Sort' | 'Plan' | 'Export' | 'Data' | 'Settings'
+export type Group = 'Modes' | 'General' | 'Dump' | 'Sort' | 'Plan' | 'Today' | 'Export' | 'Data' | 'Settings'
 
-export const GROUP_ORDER: Group[] = ['Modes', 'Dump', 'Sort', 'Plan', 'General', 'Export', 'Data', 'Settings']
+export const GROUP_ORDER: Group[] = ['Modes', 'Dump', 'Sort', 'Plan', 'Today', 'General', 'Export', 'Data', 'Settings']
 
 export interface Command {
   id: string
@@ -68,6 +68,35 @@ export const COMMANDS: Command[] = [
     keys: ['shift+3'],
     keywords: 'week calendar days schedule today tomorrow',
     run: () => a.setMode('plan'),
+  },
+  {
+    id: 'mode.today',
+    title: 'Today: do one thing at a time',
+    hud: 'Today',
+    group: 'Modes',
+    keys: ['shift+4'],
+    keywords: 'focus checklist done tick do now',
+    run: () => a.setMode('today'),
+  },
+  {
+    id: 'mode.next',
+    title: 'Next screen',
+    hud: 'Screen →',
+    group: 'Modes',
+    keys: ['alt+right'],
+    palette: false,
+    sheet: false,
+    run: () => a.cycleMode(1),
+  },
+  {
+    id: 'mode.prev',
+    title: 'Previous screen',
+    hud: '← Screen',
+    group: 'Modes',
+    keys: ['alt+left'],
+    palette: false,
+    sheet: false,
+    run: () => a.cycleMode(-1),
   },
 
   // ------------------------------------------------------------ general
@@ -384,6 +413,88 @@ export const COMMANDS: Command[] = [
     run: () => a.planReorder(1),
   },
 
+  // ------------------------------------------------------------ today
+  {
+    id: 'today.done',
+    title: 'Tick off, next',
+    hud: 'Done',
+    group: 'Today',
+    scope: 'today',
+    keys: ['x', 'space'],
+    run: a.todayToggle,
+  },
+  {
+    id: 'today.defer',
+    title: 'Not today: move to tomorrow',
+    hud: '→ Tomorrow',
+    group: 'Today',
+    scope: 'today',
+    keys: ['t'],
+    keywords: 'defer later postpone snooze',
+    run: a.todayDefer,
+  },
+  {
+    id: 'today.focus',
+    title: 'Focus 25 minutes on this',
+    hud: 'Focus',
+    group: 'Today',
+    scope: 'today',
+    keys: ['f'],
+    keywords: 'pomodoro timer concentrate',
+    run: a.focusToggle,
+  },
+  {
+    id: 'today.down',
+    title: 'Next',
+    hud: 'Down',
+    group: 'Today',
+    scope: 'today',
+    keys: ['down', 'j'],
+    repeat: true,
+    palette: false,
+    run: () => a.todayMove(1),
+  },
+  {
+    id: 'today.up',
+    title: 'Previous',
+    hud: 'Up',
+    group: 'Today',
+    scope: 'today',
+    keys: ['up', 'k'],
+    repeat: true,
+    palette: false,
+    run: () => a.todayMove(-1),
+  },
+  {
+    id: 'today.moveDown',
+    title: 'Move down',
+    hud: 'Move down',
+    group: 'Today',
+    scope: 'today',
+    keys: ['shift+down'],
+    repeat: true,
+    palette: false,
+    run: () => a.todayReorder(1),
+  },
+  {
+    id: 'today.moveUp',
+    title: 'Move up',
+    hud: 'Move up',
+    group: 'Today',
+    scope: 'today',
+    keys: ['shift+up'],
+    repeat: true,
+    palette: false,
+    run: () => a.todayReorder(-1),
+  },
+  {
+    id: 'focus.stop',
+    title: 'Stop focus timer',
+    group: 'General',
+    keywords: 'pomodoro cancel',
+    run: a.focusStop,
+  },
+
   // ------------------------------------------------------------ export
   {
     id: 'export.plan',
@@ -449,6 +560,7 @@ export interface SheetHint {
 export const SHEET_HINTS: SheetHint[] = [
   { group: 'General', title: 'Start typing in Sort or Plan to search', keys: ['a–z'], literal: true },
   { group: 'General', title: 'Paste a list: one thought per line', keys: ['mod+v'] },
+  { group: 'Modes', title: 'Previous / next screen', keys: ['alt+left', 'alt+right'] },
   { group: 'Dump', title: 'Start typing anywhere to add', keys: ['a–z'], literal: true },
   { group: 'Dump', title: 'While typing: save and start the next', keys: ['enter'] },
   { group: 'Dump', title: 'While typing: finish (double-tap ⇧ or esc)', keys: ['escape'] },

@@ -307,3 +307,52 @@
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------ focus pill */
+
+.focus-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px 0 7px;
+  border: 1px solid color-mix(in srgb, var(--accent-fg) 50%, var(--line));
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  color: var(--text);
+  font: 12px/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.focus-pill__ring {
+  width: 18px;
+  height: 18px;
+  transform: rotate(-90deg);
+}
+
+.focus-pill__ring circle {
+  fill: none;
+  stroke-width: 2.5;
+  stroke: var(--line-strong);
+}
+
+.focus-pill__ring circle + circle {
+  stroke: var(--accent-fg);
+  stroke-dasharray: 50.27;
+  transition: stroke-dashoffset 1s linear;
+}
+
+.focus-pill__time {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-pill__text {
+  color: var(--text-2);
+}
+
+@media (max-width: 900px) {
+  .focus-pill__text {
+    display: none;
+  }
+}

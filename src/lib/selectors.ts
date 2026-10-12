@@ -62,3 +62,28 @@ export function nextInQueue(queue: Item[], currentId: string): string | null {
 export function itemsInColumn(items: Item[], col: string, today: string): Item[] {
   return items.filter((i) => isPlannable(i) && columnFor(i.slot, today) === col)
 }
+
+// ---------------------------------------------------------------- today
+
+/** Today's plan: anything overdue and unfinished first, then today's thoughts in list order. */
+export function todayList(items: Item[], today: string): Item[] {
+  const overdue = items.filter((i) => isPlannable(i) && !i.done && isOverdue(i.slot, today))
+  return [...overdue, ...items.filter((i) => isPlannable(i) && i.slot === today)]
+}
+
+export function resolveTodayCursor(items: Item[], cursor: string | null, today: string): string | null {
+  const list = todayList(items, today)
+  if (cursor && list.some((i) => i.id === cursor)) return cursor
+  return (list.find((i) => !i.done) ?? list[0])?.id ?? null
+}
+
+/** The numbers that show how much lighter things are: total out of your head, let go, and on today. */
+export function clarity(items: Item[], today: string) {
+  const list = todayList(items, today)
+  return {
+    total: items.length,
+    dropped: items.filter((i) => i.quadrant === 'drop').length,
+    today: list.length,
+    doneToday: list.filter((i) => i.done).length,
+  }
+}

@@ -229,3 +229,75 @@
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------ today */
+
+.clarity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font: 12px/1.4 var(--font-mono);
+  color: var(--text-3);
+}
+
+.clarity b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tray-empty .clarity {
+  justify-content: center;
+}
+
+.today-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.today-list {
+  margin-top: 14px;
+}
+
+.today-row {
+  cursor: pointer;
+}
+
+.today-check {
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.today-row[data-done] .today-check {
+  color: var(--accent-fg);
+}
+
+.today-row[data-focus] {
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-2));
+}
+
+.tag--focus {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.today-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 14px;
+  font: 12px var(--font-mono);
+  color: var(--text-3);
+}
+
+.today-keys > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dump-empty--static {
+  cursor: default;
+}
