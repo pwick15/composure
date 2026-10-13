@@ -9,11 +9,14 @@ import { todayKey } from '../lib/dates'
 import { autosize } from '../lib/dom'
 import { EXIT_FAST, keepFocus } from '../lib/motion'
 import { splitLines } from '../lib/text'
+import { draftIndex, isDone, leaves, parentIds, progress, treeOrder } from '../lib/tree'
 import type { Item } from '../lib/types'
 import {
+  editorAddSub,
   editorBackspaceEmpty,
   editorEnter,
   editorExit,
+  editorIndent,
   editorMove,
   editorPaste,
   sameTarget,
@@ -84,6 +87,18 @@ function Editor({ target, initial }: { target: EditTarget; initial: string }) {
       })
       return
     }
+    if (e.key === 'Tab' && !mod && !e.altKey) {
+      e.preventDefault()
+      feedback(native, e.shiftKey ? 'Un-nest' : 'Nest')
+      run(() => editorIndent(target, value, e.shiftKey ? -1 : 1))
+      return
+    }
+    if (e.key === 'Enter' && e.altKey) {
+      e.preventDefault()
+      feedback(native, 'Subtask')
+      run(() => editorAddSub(target, value))
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       feedback(native, value.trim() ? 'Next' : 'Finish')
@@ -147,38 +162,52 @@ function Editor({ target, initial }: { target: EditTarget; initial: string }) {
 
 interface RowProps {
   item: Item
-  index: number
+  /** The row's label in the left gutter: a number, or a tree branch for a subtask. */
+  gutter: string
+  sub: boolean
+  /** Subtasks done out of subtasks, when this thought has any. */
+  kids: { done: number; total: number } | null
+  done: boolean
   selected: boolean
   editing: EditTarget | null
   today: string
   ref?: Ref<HTMLLIElement>
 }
 
-function Row({ item, index, selected, editing, today, ref }: RowProps) {
+function Row({ item, gutter, sub, kids, done, selected, editing, today, ref }: RowProps) {
   const quiet = bornInPlace.has(item.id)
   return (
     <motion.li
       ref={ref}
       layout="position"
       className="row"
+      data-sub={sub || undefined}
       data-selected={selected || undefined}
       data-editing={editing ? '' : undefined}
-      data-done={item.done || undefined}
+      data-done={done || undefined}
       initial={quiet ? false : { opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -16, transition: EXIT_FAST }}
       onClick={() => !editing && startEdit(item.id)}
     >
-      <span className="row__index">{String(index + 1).padStart(2, '0')}</span>
+      <span className="row__index">{gutter}</span>
       {editing ? (
         <Editor key={`item-${item.id}`} target={editing} initial={item.text} />
       ) : (
         <span className="row__text">{item.text}</span>
       )}
       <span className="row__meta">
-        <DoneTag item={item} />
-        {item.quadrant && <QuadrantTag item={item} />}
-        <SlotTag item={item} today={today} />
+        <DoneTag item={item} done={done} />
+        {kids ? (
+          <span className="tag" title="Subtasks done">
+            {kids.done}/{kids.total}
+          </span>
+        ) : (
+          <>
+            {item.quadrant && <QuadrantTag item={item} />}
+            <SlotTag item={item} today={today} />
+          </>
+        )}
       </span>
     </motion.li>
   )
@@ -190,6 +219,7 @@ function DraftRow({ target, ref }: { target: Extract<EditTarget, { kind: 'draft'
       ref={ref}
       layout="position"
       className="row row--draft"
+      data-sub={target.parentId !== null || undefined}
       data-editing=""
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
@@ -254,27 +284,29 @@ export function DumpMode() {
   }, [selectedId])
 
   const draft = editing?.kind === 'draft' ? editing : null
-  const draftIndex = draft
-    ? draft.afterId === null
-      ? 0
-      : (() => {
-          const i = items.findIndex((it) => it.id === draft.afterId)
-          return i === -1 ? items.length : i + 1
-        })()
-    : -1
-
-  const unsorted = items.filter((i) => !i.quadrant).length
-  const nodes = items.map((item, i) => (
-    <Row
-      key={item.id}
-      item={item}
-      index={i}
-      selected={selectedId === item.id}
-      editing={editing?.kind === 'item' && editing.id === item.id ? editing : null}
-      today={today}
-    />
-  ))
-  if (draft) nodes.splice(draftIndex, 0, <DraftRow key="draft" target={draft} />)
+  const unsorted = leaves(items).filter((i) => !i.quadrant).length
+  const parents = parentIds(items)
+  const tree = treeOrder(items)
+  let top = 0
+  const nodes = tree.map((item, i) => {
+    const sub = parents.size > 0 && item.parentId !== null && parents.has(item.parentId)
+    if (!sub) top++
+    const lastSibling = sub && !(tree[i + 1]?.parentId === item.parentId)
+    return (
+      <Row
+        key={item.id}
+        item={item}
+        gutter={sub ? (lastSibling ? '└' : '├') : String(top).padStart(2, '0')}
+        sub={sub}
+        kids={parents.has(item.id) ? progress(items, item.id) : null}
+        done={isDone(items, item)}
+        selected={selectedId === item.id}
+        editing={editing?.kind === 'item' && editing.id === item.id ? editing : null}
+        today={today}
+      />
+    )
+  })
+  if (draft) nodes.splice(draftIndex(items, draft.afterId, draft.parentId), 0, <DraftRow key="draft" target={draft} />)
 
   return (
     <div className="dump">

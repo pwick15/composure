@@ -2,6 +2,7 @@ import { motion } from 'motion/react'
 import type { Ref } from 'react'
 import { EXIT_FAST, keepFocus } from '../lib/motion'
 import type { Item } from '../lib/types'
+import { ParentRef } from './Tags'
 
 interface ChipProps {
   item: Item
@@ -34,7 +35,10 @@ export function Chip({ item, ref, selected, fresh, meta, onSelect }: ChipProps) 
         onSelect?.()
       }}
     >
-      <span className="chip__text">{item.text}</span>
+      <span className="chip__body">
+        <span className="chip__text">{item.text}</span>
+        <ParentRef item={item} className="parent-ref--chip" />
+      </span>
       {meta && <span className="chip__meta">{meta}</span>}
     </motion.div>
   )

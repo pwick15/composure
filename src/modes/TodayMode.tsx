@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { Kbd } from '../components/Kbd'
-import { QuadrantTag, SlotTag } from '../components/Tags'
+import { ParentRef, QuadrantTag, SlotTag } from '../components/Tags'
 import { isOverdue, longDate, todayKey } from '../lib/dates'
 import { EXIT_FAST, keepFocus, SPRING } from '../lib/motion'
 import { clarity, resolveTodayCursor, todayList } from '../lib/selectors'
@@ -106,7 +106,10 @@ export function TodayMode() {
                         </motion.span>
                       </AnimatePresence>
                     </span>
-                    <span className="row__text">{item.text}</span>
+                    <span className="row__main">
+                      <span className="row__text">{item.text}</span>
+                      <ParentRef item={item} className="parent-ref--row" />
+                    </span>
                     <span className="row__meta">
                       {focused && <span className="tag tag--focus">focus</span>}
                       {isOverdue(item.slot, today) && <SlotTag item={item} today={today} />}

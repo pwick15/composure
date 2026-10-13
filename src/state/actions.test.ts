@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, todayKey } from '../lib/dates'
+import { todayList } from '../lib/selectors'
+import { parentOf, treeOrder } from '../lib/tree'
 import * as a from './actions'
 import { getState, setState, useStore } from './store'
 
@@ -254,5 +256,210 @@ describe('today', () => {
     expect(getState().mode).toBe('today')
     a.cycleMode(1)
     expect(getState().mode).toBe('today')
+  })
+})
+
+// ---------------------------------------------------------------- subtasks
+
+/** Dump order as an outline: subtasks are indented under their parent. */
+const outline = () => {
+  const { items } = getState()
+  return treeOrder(items).map((i) => (i.parentId ? `  ${i.text}` : i.text))
+}
+
+/** Types "Plan trip" with subtasks "flights" and "hotel", the way the keyboard does it. */
+function tripWithSubtasks() {
+  a.startDraft()
+  a.editorEnter(getState().editing!, 'Plan trip')
+  a.editorIndent(getState().editing!, '', 1)
+  a.editorEnter(getState().editing!, 'flights')
+  a.editorEnter(getState().editing!, 'hotel')
+  a.editorIndent(getState().editing!, '', -1)
+  a.editorEnter(getState().editing!, 'Pay rent')
+  a.editorExit(getState().editing!, '')
+}
+
+describe('subtasks: dump', () => {
+  it('Tab on a new line nests it, Enter keeps adding subtasks, ⇧Tab returns to top level', () => {
+    tripWithSubtasks()
+    expect(outline()).toEqual(['Plan trip', '  flights', '  hotel', 'Pay rent'])
+  })
+
+  it('⌥↵ while typing saves the line and opens a subtask line under it', () => {
+    a.startDraft()
+    a.editorEnter(getState().editing!, 'Plan trip')
+    const parent = getState().items[0].id
+    expect(getState().editing).toMatchObject({ kind: 'draft', parentId: null })
+    a.editorAddSub(getState().editing!, '')
+    expect(getState().editing).toMatchObject({ kind: 'draft', parentId: null })
+    a.editorExit(getState().editing!, '')
+
+    a.startEdit(parent)
+    a.editorAddSub(getState().editing!, 'Plan trip')
+    expect(getState().editing).toMatchObject({ kind: 'draft', parentId: parent })
+    a.editorEnter(getState().editing!, 'flights')
+    expect(outline()).toEqual(['Plan trip', '  flights'])
+  })
+
+  it('⌥↵ on a selected parent adds the subtask last; on a subtask, right below it', () => {
+    tripWithSubtasks()
+    const [trip, flights] = getState().items
+    setState({ selectedId: trip.id })
+    a.dumpAddSub()
+    a.editorEnter(getState().editing!, 'visa')
+    expect(outline()).toEqual(['Plan trip', '  flights', '  hotel', '  visa', 'Pay rent'])
+
+    setState({ selectedId: flights.id, editing: null })
+    a.dumpAddSub()
+    a.editorEnter(getState().editing!, 'insurance')
+    expect(outline()).toEqual(['Plan trip', '  flights', '  insurance', '  hotel', '  visa', 'Pay rent'])
+  })
+
+  it('a thought typed at the end of the list is top-level, even after a subtask', () => {
+    tripWithSubtasks()
+    setState({ selectedId: null })
+    a.startDraft()
+    a.editorEnter(getState().editing!, 'Call mum')
+    expect(outline().at(-1)).toBe('Call mum')
+  })
+
+  it('Tab on a selected thought nests it under the one above, bringing its subtasks along', () => {
+    tripWithSubtasks()
+    const rent = getState().items.find((i) => i.text === 'Pay rent')!
+    setState({ selectedId: rent.id })
+    a.dumpIndent(1)
+    expect(outline()).toEqual(['Plan trip', '  flights', '  hotel', '  Pay rent'])
+    a.undo()
+    expect(outline()).toEqual(['Plan trip', '  flights', '  hotel', 'Pay rent'])
+
+  })
+
+  it('nesting a parent under another flattens its subtasks: one level only', () => {
+    tripWithSubtasks()
+    a.startDraft()
+    a.editorEnter(getState().editing!, 'Errands')
+    a.editorExit(getState().editing!, '')
+    const byText = (t: string) => getState().items.find((i) => i.text === t)!
+    setState({ selectedId: byText('Pay rent').id })
+    a.dumpAddSub()
+    a.editorEnter(getState().editing!, 'cheque')
+    setState({ selectedId: byText('Errands').id, editing: null })
+    a.dumpIndent(1)
+    expect(outline()).toEqual(['Plan trip', '  flights', '  hotel', 'Pay rent', '  cheque', '  Errands'])
+    setState({ selectedId: byText('Pay rent').id })
+    a.dumpIndent(1)
+    expect(outline()).toEqual(['Plan trip', '  flights', '  hotel', '  Pay rent', '  cheque', '  Errands'])
+  })
+
+  it('⇧Tab pops a subtask out below its group', () => {
+    tripWithSubtasks()
+    const flights = getState().items.find((i) => i.text === 'flights')!
+    setState({ selectedId: flights.id })
+    a.dumpIndent(-1)
+    expect(outline()).toEqual(['Plan trip', '  hotel', 'flights', 'Pay rent'])
+  })
+
+  it('there is nothing to nest the first line under', () => {
+    dump('only')
+    setState({ selectedId: getState().items[0].id })
+    a.dumpIndent(1)
+    expect(outline()).toEqual(['only'])
+  })
+
+  it('↑/↓ walk subtasks in the order they are shown', () => {
+    tripWithSubtasks()
+    setState({ selectedId: null })
+    const seen: string[] = []
+    for (let i = 0; i < 4; i++) {
+      a.dumpSelect(1)
+      seen.push(getState().items.find((it) => it.id === getState().selectedId)!.text)
+    }
+    expect(seen).toEqual(['Plan trip', 'flights', 'hotel', 'Pay rent'])
+  })
+
+  it('⇧↑/⇧↓ move a parent with its subtasks, and a subtask among its siblings', () => {
+    tripWithSubtasks()
+    const byText = (t: string) => getState().items.find((i) => i.text === t)!.id
+    a.moveItem(byText('Plan trip'), 1)
+    expect(outline()).toEqual(['Pay rent', 'Plan trip', '  flights', '  hotel'])
+    a.moveItem(byText('hotel'), -1)
+    expect(outline()).toEqual(['Pay rent', 'Plan trip', '  hotel', '  flights'])
+    a.moveItem(byText('hotel'), -1)
+    expect(outline()).toEqual(['Pay rent', 'Plan trip', '  hotel', '  flights'])
+  })
+
+  it('deleting a parent deletes its subtasks, in one undo step', () => {
+    tripWithSubtasks()
+    setState({ selectedId: getState().items[0].id })
+    a.dumpDelete()
+    expect(outline()).toEqual(['Pay rent'])
+    expect(getState().selectedId).toBe(getState().items[0].id)
+    a.undo()
+    expect(outline()).toEqual(['Plan trip', '  flights', '  hotel', 'Pay rent'])
+  })
+
+  it('deleting the last subtask makes the parent a plain thought again', () => {
+    tripWithSubtasks()
+    for (const t of ['flights', 'hotel']) {
+      setState({ selectedId: getState().items.find((i) => i.text === t)!.id })
+      a.dumpDelete()
+    }
+    expect(outline()).toEqual(['Plan trip', 'Pay rent'])
+    a.setMode('sort')
+    expect(a.sortCurrent()?.text).toBe('Plan trip')
+  })
+
+  it('ticking a parent ticks its subtasks; clearing completed takes the whole group', () => {
+    tripWithSubtasks()
+    a.toggleDone(getState().items[0].id)
+    expect(getState().items.filter((i) => i.done).map((i) => i.text)).toEqual(['flights', 'hotel'])
+    a.clearDone()
+    expect(outline()).toEqual(['Pay rent'])
+  })
+
+  it('pasting onto a subtask adds more subtasks to its parent', () => {
+    tripWithSubtasks()
+    setState({ selectedId: getState().items.find((i) => i.text === 'flights')!.id })
+    a.pasteLines(['visa', 'insurance'])
+    expect(outline()).toEqual(['Plan trip', '  flights', '  visa', '  insurance', '  hotel', 'Pay rent'])
+  })
+})
+
+describe('subtasks: sort, plan and today', () => {
+  it('Sort and Plan treat each subtask as its own thought and skip the parent', () => {
+    tripWithSubtasks()
+    a.setMode('sort')
+    const seen: string[] = []
+    for (let i = 0; i < 3; i++) {
+      seen.push(a.sortCurrent()!.text)
+      a.deckFile('sort', 'do')
+    }
+    expect(seen).toEqual(['flights', 'hotel', 'Pay rent'])
+    expect(a.sortCurrent()).toBeNull()
+
+    a.setMode('plan')
+    expect(a.planCurrent()?.text).toBe('flights')
+    a.planFileDay(1)
+    expect(getState().items.find((i) => i.text === 'flights')!.slot).toBe(todayKey())
+    expect(getState().items.find((i) => i.text === 'Plan trip')!.slot).toBeNull()
+  })
+
+  it('subtasks of a thought that was already filed start where it is', () => {
+    dump('Plan trip')
+    a.setMode('sort')
+    a.deckFile('sort', 'schedule')
+    a.setMode('dump')
+    setState({ selectedId: getState().items[0].id })
+    a.dumpAddSub()
+    a.editorEnter(getState().editing!, 'flights')
+    expect(getState().items.find((i) => i.text === 'flights')).toMatchObject({ quadrant: 'schedule' })
+  })
+
+  it('Today lists only subtasks, each pointing back at its parent', () => {
+    tripWithSubtasks()
+    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do' as const, slot: todayKey() })) })
+    a.setMode('today')
+    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['flights', 'hotel', 'Pay rent'])
+    expect(parentOf(getState().items, a.todayCurrent()!)?.text).toBe('Plan trip')
   })
 })

@@ -12,6 +12,8 @@ export interface Item {
   quadrant: Quadrant | null
   slot: Slot | null
   done: boolean
+  /** The thought this is a subtask of. One level deep: a subtask never has subtasks of its own. */
+  parentId: string | null
 }
 
 export type Theme = 'system' | 'dark' | 'light'

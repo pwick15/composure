@@ -18,10 +18,19 @@ const h = (keys: string | string[], label: string, literal = false): Hint => ({
 function hintsFor(s: State): Hint[] {
   if (s.mode === 'dump') {
     if (s.editing)
-      return [h('enter', 'next'), h('⇧ ⇧', 'done', true), h(['up', 'down'], 'move'), h('backspace', 'empty: step back')]
+      return [
+        h('enter', 'next'),
+        h(['tab', 'shift+tab'], 'nest'),
+        h('alt+enter', 'subtask'),
+        h('⇧ ⇧', 'done', true),
+        h(['up', 'down'], 'move'),
+        h('backspace', 'empty: step back'),
+      ]
     if (s.selectedId)
       return [
         h('enter', 'edit'),
+        h('alt+enter', 'subtask'),
+        h(['tab', 'shift+tab'], 'nest'),
         h('backspace', 'delete'),
         h(['shift+up', 'shift+down'], 'reorder'),
         h('mod+enter', 'done'),

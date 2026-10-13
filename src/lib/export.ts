@@ -1,11 +1,22 @@
 import { addDays, columnFor, isDateSlot, LATER, longDate, planColumns } from './dates'
 import { QUADRANTS, QUADRANT_BY_ID } from './quadrants'
 import { isPlannable, planQueue } from './selectors'
+import { leaves, parentOf } from './tree'
 import type { Item } from './types'
 
-const box = (i: Item) => `- [${i.done ? 'x' : ' '}] ${i.text}`
+// Parents are labels for their subtasks, so every export lists the subtasks and names the parent.
 
-export function planMarkdown(items: Item[], today: string): string {
+/** " · Plan trip" for a subtask, else nothing. */
+const partOf = (all: Item[], i: Item) => {
+  const parent = parentOf(all, i)
+  return parent ? ` · ${parent.text}` : ''
+}
+
+const boxer = (all: Item[]) => (i: Item) => `- [${i.done ? 'x' : ' '}] ${i.text}${partOf(all, i)}`
+
+export function planMarkdown(all: Item[], today: string): string {
+  const items = leaves(all)
+  const box = boxer(all)
   const out = [`# Plan · ${longDate(today)}`]
   for (const col of planColumns(today)) {
     const list = items.filter((i) => isPlannable(i) && columnFor(i.slot, today) === col.key)
@@ -14,7 +25,7 @@ export function planMarkdown(items: Item[], today: string): string {
       col.key === LATER ? 'Later' : col.label === col.sub.slice(0, 3) ? col.sub : `${col.label} · ${col.sub}`
     out.push('', `## ${heading}`, ...list.map(box))
   }
-  const rest = planQueue(items, today)
+  const rest = planQueue(all, today)
   if (rest.length) {
     out.push('', '## Not planned yet')
     out.push(...rest.map((i) => `${box(i)}${i.quadrant ? ` (${QUADRANT_BY_ID[i.quadrant].title})` : ''}`))
@@ -22,7 +33,9 @@ export function planMarkdown(items: Item[], today: string): string {
   return out.join('\n') + '\n'
 }
 
-export function matrixMarkdown(items: Item[]): string {
+export function matrixMarkdown(all: Item[]): string {
+  const items = leaves(all)
+  const box = boxer(all)
   const out = ['# Priorities']
   for (const q of QUADRANTS) {
     const list = items.filter((i) => i.quadrant === q.id)
@@ -65,8 +78,8 @@ function fold(line: string): string {
 const compactDate = (key: string) => key.replace(/-/g, '')
 
 /** All-day events for every planned, unfinished item from today onwards. */
-export function planICS(items: Item[], today: string, now = new Date()): string | null {
-  const events = items.filter((i) => isPlannable(i) && !i.done && isDateSlot(i.slot) && i.slot >= today)
+export function planICS(all: Item[], today: string, now = new Date()): string | null {
+  const events = leaves(all).filter((i) => isPlannable(i) && !i.done && isDateSlot(i.slot) && i.slot >= today)
   if (!events.length) return null
   const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
   const lines = [
@@ -86,6 +99,8 @@ export function planICS(items: Item[], today: string, now = new Date()): string 
       `DTEND;VALUE=DATE:${compactDate(addDays(slot, 1))}`,
       `SUMMARY:${icsEscape(item.text)}`,
     )
+    const parent = parentOf(all, item)
+    if (parent) lines.push(`DESCRIPTION:${icsEscape(`Part of: ${parent.text}`)}`)
     if (item.quadrant) lines.push(`CATEGORIES:${icsEscape(QUADRANT_BY_ID[item.quadrant].title)}`)
     lines.push('TRANSP:TRANSPARENT', 'END:VEVENT')
   }
@@ -96,15 +111,21 @@ export function planICS(items: Item[], today: string, now = new Date()): string 
 // ---------------------------------------------------------------- Things 3
 
 /** things:/// JSON URL that adds every planned, unfinished item with its day. */
-export function thingsURL(items: Item[], today: string): string | null {
-  const todos = items
+export function thingsURL(all: Item[], today: string): string | null {
+  const todos = leaves(all)
     .filter((i) => isPlannable(i) && !i.done && i.slot && !(isDateSlot(i.slot) && i.slot < today))
     .map((i) => ({
       type: 'to-do',
       attributes: {
         title: i.text,
         when: i.slot === LATER ? 'someday' : i.slot === today ? 'today' : i.slot,
-        notes: i.quadrant ? `From Composure · ${QUADRANT_BY_ID[i.quadrant].title}` : 'From Composure',
+        notes: [
+          'From Composure',
+          i.quadrant && QUADRANT_BY_ID[i.quadrant].title,
+          parentOf(all, i) && `Part of: ${parentOf(all, i)!.text}`,
+        ]
+          .filter(Boolean)
+          .join(' · '),
       },
     }))
   if (!todos.length) return null
@@ -130,7 +151,8 @@ const QUADRANT_IDS = new Set<string>(QUADRANTS.map((q) => q.id))
 export function parseBackup(json: string): Item[] {
   const data = JSON.parse(json) as Partial<Backup>
   if (data?.app !== 'composure' || !Array.isArray(data.items)) throw new Error('Not a Composure backup')
-  return data.items.map((raw, n) => {
+  const ids = new Set(data.items.map((r) => (r as Partial<Item>)?.id))
+  const items = data.items.map((raw, n) => {
     const r = raw as Partial<Item>
     if (typeof r.id !== 'string' || typeof r.text !== 'string') throw new Error(`Item ${n + 1} is malformed`)
     return {
@@ -140,6 +162,10 @@ export function parseBackup(json: string): Item[] {
       quadrant: r.quadrant && QUADRANT_IDS.has(r.quadrant) ? r.quadrant : null,
       slot: typeof r.slot === 'string' ? r.slot : null,
       done: Boolean(r.done),
+      parentId: typeof r.parentId === 'string' && r.parentId !== r.id && ids.has(r.parentId) ? r.parentId : null,
     }
   })
+  // Subtasks are one level deep: a subtask of a subtask becomes a plain thought.
+  const nested = new Set(items.filter((i) => i.parentId).map((i) => i.id))
+  return items.map((i) => (i.parentId && nested.has(i.parentId) ? { ...i, parentId: null } : i))
 }

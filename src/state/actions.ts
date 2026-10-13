@@ -11,6 +11,7 @@ import {
   sortGroups,
   todayList,
 } from '../lib/selectors'
+import { childrenOf, draftIndex, isDone, lastInBlock, parentKey, treeOrder } from '../lib/tree'
 import type { Item, Mode, Quadrant } from '../lib/types'
 import { type Deck, type Editing, freshDeck, getState as get, setState as set, type TrayExit } from './store'
 
@@ -58,7 +59,7 @@ function changedId(a: Item[], b: Item[]): string | null {
   const byId = new Map(b.map((i) => [i.id, i]))
   for (const i of a) {
     const j = byId.get(i.id)
-    if (!j || j.quadrant !== i.quadrant || j.slot !== i.slot || j.text !== i.text || j.done !== i.done) return i.id
+    if (!j || j.quadrant !== i.quadrant || j.slot !== i.slot || j.text !== i.text || j.done !== i.done || j.parentId !== i.parentId) return i.id
   }
   return b.find((j) => !a.some((i) => i.id === j.id))?.id ?? null
 }
@@ -95,16 +96,35 @@ export function toast(text: string, keys?: string) {
 
 // ---------------------------------------------------------------- items
 
-export function makeItem(text: string): Item {
-  return { id: uid(), text, createdAt: Date.now(), quadrant: null, slot: null, done: false }
+/** A subtask starts where its parent already is, so filing a split-up task doesn't undo itself. */
+export function makeItem(text: string, parent?: Item): Item {
+  return {
+    id: uid(),
+    text,
+    createdAt: Date.now(),
+    quadrant: parent?.quadrant ?? null,
+    slot: parent?.slot ?? null,
+    done: false,
+    parentId: parent?.id ?? null,
+  }
 }
 
 const findItem = (id: string | null) => (id ? get().items.find((i) => i.id === id) : undefined)
 
+/** Previous and next thought as Dump shows them, subtasks included. */
 function neighbours(id: string) {
-  const { items } = get()
-  const i = items.findIndex((it) => it.id === id)
-  return { prev: items[i - 1]?.id ?? null, next: items[i + 1]?.id ?? null }
+  const order = treeOrder(get().items)
+  const i = order.findIndex((it) => it.id === id)
+  return { prev: order[i - 1]?.id ?? null, next: order[i + 1]?.id ?? null }
+}
+
+/** Moves `ids` (in that order) to sit right after `after`, leaving every other thought where it is. */
+function relocate(items: Item[], ids: string[], after: string): Item[] {
+  const moving = new Set(ids)
+  const rest = items.filter((i) => !moving.has(i.id))
+  const at = rest.findIndex((i) => i.id === after)
+  const block = ids.map((id) => items.find((i) => i.id === id)!)
+  return [...rest.slice(0, at + 1), ...block, ...rest.slice(at + 1)]
 }
 
 function patch(id: string, change: Partial<Item>) {
@@ -115,34 +135,118 @@ function patch(id: string, change: Partial<Item>) {
   commit(get().items.map((i) => (i.id === id ? { ...i, ...change } : i)))
 }
 
-/** Inserts after `afterId`; null inserts at the top. Returns the new ids. */
-export function addItems(afterId: string | null, texts: string[]): string[] {
+/**
+ * Inserts after `afterId`; null inserts at the top. Returns the new ids. With a `parentId`
+ * the new thoughts become its subtasks, after `afterId` if that is one of them, else last.
+ */
+export function addItems(afterId: string | null, texts: string[], parentId: string | null = null): string[] {
   if (!texts.length) return []
   const { items } = get()
-  const created = texts.map(makeItem)
+  const parent = parentId ? items.find((i) => i.id === parentId) : undefined
+  const created = texts.map((t) => makeItem(t, parent))
+  if (parent && !(afterId && items.some((i) => i.id === afterId && i.parentId === parent.id))) {
+    afterId = lastInBlock(items, parent.id)
+  } else if (!parent && afterId) {
+    // Below a parent means below its subtasks too, so the stored order matches what Dump shows.
+    afterId = lastInBlock(items, afterId)
+  }
   const found = afterId === null ? -1 : items.findIndex((i) => i.id === afterId)
   const at = afterId === null ? 0 : found === -1 ? items.length : found + 1
   commit([...items.slice(0, at), ...created, ...items.slice(at)])
   return created.map((i) => i.id)
 }
 
-export const updateText = (id: string, text: string) => patch(id, { text })
-export const removeItem = (id: string) => commit(get().items.filter((i) => i.id !== id))
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
+export const updateText = (id: string, text: string) => patch(id, { text })
+
+/** Deletes a thought and its subtasks. Returns how many subtasks went with it (and says so). */
+export function removeItem(id: string): number {
+  const item = findItem(id)
+  const kids = childrenOf(get().items, id).length
+  commit(get().items.filter((i) => i.id !== id && i.parentId !== id))
+  if (item && kids) toast(`Deleted "${truncate(item.text)}" and ${plural(kids, 'subtask')}`, 'mod+z')
+  return kids
+}
+
+/** A parent has no done flag of its own: ticking it ticks every subtask, or clears them if all were done. */
 export function toggleDone(id: string) {
   const item = findItem(id)
   if (!item) return
+  const kids = childrenOf(get().items, id)
+  if (kids.length) {
+    const allDone = kids.every((k) => k.done)
+    commit(get().items.map((i) => (i.parentId === id ? { ...i, done: !allDone } : i)))
+    return toast(allDone ? 'Marked not done' : `Done, with ${plural(kids.length, 'subtask')}`, 'x')
+  }
   patch(id, { done: !item.done })
   toast(item.done ? 'Marked not done' : 'Done', 'x')
 }
 
+/** Moves a thought up or down among its siblings; a parent takes its subtasks with it. */
 export function moveItem(id: string, dir: -1 | 1) {
   const items = [...get().items]
-  const i = items.findIndex((it) => it.id === id)
-  const j = i + dir
-  if (i === -1 || j < 0 || j >= items.length) return
-  ;[items[i], items[j]] = [items[j], items[i]]
+  const item = items.find((it) => it.id === id)
+  if (!item) return
+  const key = parentKey(items, item)
+  const siblings = items.filter((it) => parentKey(items, it) === key)
+  const other = siblings[siblings.findIndex((it) => it.id === id) + dir]
+  if (!other) return
+  const a = items.indexOf(item)
+  const b = items.indexOf(other)
+  ;[items[a], items[b]] = [items[b], items[a]]
   commit(items)
+}
+
+// ---------------------------------------------------------------- subtasks
+
+/** Tab: nest a thought under the one above it. Its own subtasks come along as siblings (one level only). */
+export function indentItem(id: string): boolean {
+  const { items } = get()
+  const item = items.find((i) => i.id === id)
+  if (!item) return false
+  if (parentKey(items, item)) {
+    toast('Already a subtask. One level deep keeps it simple')
+    return false
+  }
+  const order = treeOrder(items)
+  const above = order[order.findIndex((i) => i.id === id) - 1]
+  if (!above) {
+    toast('Nothing above to nest under')
+    return false
+  }
+  const parent = parentKey(items, above) ?? above.id
+  const moving = [id, ...childrenOf(items, id).map((k) => k.id)]
+  const rest = items.filter((i) => !moving.includes(i.id))
+  const anchor = lastInBlock(rest, parent)
+  commit(
+    relocate(
+      items.map((i) => (moving.includes(i.id) ? { ...i, parentId: parent } : i)),
+      moving,
+      anchor,
+    ),
+  )
+  return true
+}
+
+/** ⇧Tab: a subtask becomes a thought of its own, just below its old group. */
+export function outdentItem(id: string): boolean {
+  const { items } = get()
+  const item = items.find((i) => i.id === id)
+  const parent = item && parentKey(items, item)
+  if (!item || !parent) {
+    toast('Already top-level')
+    return false
+  }
+  const rest = items.filter((i) => i.id !== id)
+  commit(
+    relocate(
+      items.map((i) => (i.id === id ? { ...i, parentId: null } : i)),
+      [id],
+      lastInBlock(rest, parent),
+    ),
+  )
+  return true
 }
 
 export function replaceItems(items: Item[]) {
@@ -152,9 +256,11 @@ export function replaceItems(items: Item[]) {
 
 export function clearDone() {
   const { items } = get()
-  const n = items.filter((i) => i.done).length
+  const finished = items.filter((i) => isDone(items, i))
+  const n = finished.length
   if (!n) return toast('No completed items')
-  commit(items.filter((i) => !i.done))
+  const gone = new Set(finished.map((i) => i.id))
+  commit(items.filter((i) => !gone.has(i.id)))
   toast(`Cleared ${n} completed`, 'mod+z')
 }
 
@@ -168,8 +274,11 @@ export function clearAll() {
 /** Adds pasted lines as new items (outside the editor). */
 export function pasteLines(lines: string[]) {
   const s = get()
-  const anchor = s.mode === 'dump' ? (s.selectedId ?? s.items.at(-1)?.id ?? null) : (s.items.at(-1)?.id ?? null)
-  const ids = addItems(anchor, lines)
+  const tail = treeOrder(s.items).at(-1)
+  const selected = s.mode === 'dump' ? findItem(s.selectedId) : undefined
+  const anchor = selected?.id ?? tail?.parentId ?? tail?.id ?? null
+  // Pasting onto a subtask adds more subtasks to its parent.
+  const ids = addItems(anchor, lines, selected ? parentKey(s.items, selected) : null)
   if (s.mode === 'dump') set({ selectedId: ids.at(-1) ?? null })
   toast(`Added ${ids.length} item${ids.length === 1 ? '' : 's'}`, 'mod+z')
 }
@@ -205,17 +314,36 @@ export function cycleMode(dir: -1 | 1) {
 // ---------------------------------------------------------------- dump
 
 let draftNonce = 0
-const draftAfter = (afterId: string | null, seed = ''): EditTarget => ({
+const draftAfter = (afterId: string | null, seed = '', parentId: string | null = null): EditTarget => ({
   kind: 'draft',
   afterId,
+  parentId,
   seed,
   nonce: ++draftNonce,
 })
 
+/** A new line after this thought: a sibling if it is a subtask, else a new top-level thought. */
+function draftBelow(id: string, seed = ''): EditTarget {
+  const item = findItem(id)
+  return draftAfter(id, seed, item ? parentKey(get().items, item) : null)
+}
+
+/** A new subtask line: last under a parent, or right below the subtask you're on. */
+function draftSub(id: string): EditTarget {
+  const { items } = get()
+  const item = items.find((i) => i.id === id)
+  const parent = item && (parentKey(items, item) ?? item.id)
+  if (!item || !parent) return draftAfter(id)
+  return draftAfter(item.id === parent ? lastInBlock(items, parent) : item.id, '', parent)
+}
+
 export function startDraft(seed = '') {
   const s = get()
-  const afterId = s.selectedId ?? s.items.at(-1)?.id ?? null
-  set({ editing: draftAfter(afterId, seed) })
+  const selected = findItem(s.selectedId)
+  if (selected) return set({ editing: draftBelow(selected.id, seed) })
+  // Nothing selected: a new thought at the end of the list, never a subtask of the last one.
+  const tail = treeOrder(s.items).at(-1)
+  set({ editing: draftAfter(tail ? (parentKey(s.items, tail) ?? tail.id) : null, seed) })
 }
 
 export function startEdit(id: string, caret: 'start' | 'end' = 'end') {
@@ -232,7 +360,7 @@ export const isEditing = (target: EditTarget) => sameTarget(get().editing, targe
 /** Saves the editor's text. Returns the item id it now lives on, or null if nothing remains. */
 function commitEditor(target: EditTarget, value: string): string | null {
   const text = value.trim()
-  if (target.kind === 'draft') return text ? addItems(target.afterId, [text])[0] : null
+  if (target.kind === 'draft') return text ? addItems(target.afterId, [text], target.parentId)[0] : null
   if (!text) {
     removeItem(target.id)
     return null
@@ -248,7 +376,7 @@ function fallbackSelection(target: EditTarget) {
 export function editorEnter(target: EditTarget, value: string) {
   const fallback = fallbackSelection(target)
   const id = commitEditor(target, value)
-  if (id) set({ editing: draftAfter(id), selectedId: id })
+  if (id) set({ editing: draftBelow(id), selectedId: id })
   else set({ editing: null, selectedId: fallback })
 }
 
@@ -259,15 +387,24 @@ export function editorExit(target: EditTarget, value: string) {
   set({ editing: null, selectedId: id ?? fallback })
 }
 
+/** The thought visually above a draft line. */
+function aboveDraft(target: Extract<EditTarget, { kind: 'draft' }>): string | null {
+  if (!target.afterId) return null
+  return target.parentId === null ? lastInBlock(get().items, target.afterId) : target.afterId
+}
+
 export function editorBackspaceEmpty(target: EditTarget) {
   if (target.kind === 'draft') {
-    const prev = target.afterId
+    const prev = aboveDraft(target)
     set({ editing: prev ? { kind: 'item', id: prev, caret: 'end' } : null, selectedId: prev })
     return
   }
-  const { prev, next } = neighbours(target.id)
+  const { prev } = neighbours(target.id)
+  const at = treeOrder(get().items).findIndex((i) => i.id === target.id)
   removeItem(target.id)
-  set({ editing: prev ? { kind: 'item', id: prev, caret: 'end' } : null, selectedId: prev ?? next })
+  const after = treeOrder(get().items)
+  const land = prev ?? after[Math.min(at, after.length - 1)]?.id ?? null
+  set({ editing: prev ? { kind: 'item', id: prev, caret: 'end' } : null, selectedId: land })
 }
 
 export function editorMove(target: EditTarget, value: string, dir: -1 | 1) {
@@ -275,9 +412,8 @@ export function editorMove(target: EditTarget, value: string, dir: -1 | 1) {
   let prev: string | null
   let next: string | null
   if (target.kind === 'draft') {
-    prev = target.afterId
-    const at = target.afterId === null ? 0 : items.findIndex((i) => i.id === target.afterId) + 1
-    next = items[at]?.id ?? null
+    prev = aboveDraft(target)
+    next = treeOrder(items)[draftIndex(items, target.afterId, target.parentId)]?.id ?? null
   } else {
     ;({ prev, next } = neighbours(target.id))
   }
@@ -293,18 +429,19 @@ export function editorMove(target: EditTarget, value: string, dir: -1 | 1) {
     set({ editing: { kind: 'item', id: next, caret: 'start' }, selectedId: next })
   } else if (target.kind === 'item') {
     const id = commitEditor(target, value)
-    if (id) set({ editing: draftAfter(id), selectedId: id })
+    if (id) set({ editing: draftBelow(id), selectedId: id })
   }
 }
 
 export function editorPaste(target: EditTarget, merged: string, rest: string[]) {
   const fallback = fallbackSelection(target)
+  const parent = target.kind === 'draft' ? target.parentId : parentKey(get().items, findItem(target.id)!)
   const last = transact(() => {
     const id = commitEditor(target, merged)
     const anchor = id ?? fallback
-    return addItems(anchor, rest).at(-1) ?? anchor
+    return addItems(anchor, rest, parent).at(-1) ?? anchor
   })
-  set({ editing: draftAfter(last), selectedId: last })
+  set({ editing: last ? draftBelow(last) : null, selectedId: last })
   toast(`Added ${rest.length + 1} items`, 'mod+z')
 }
 
@@ -315,7 +452,8 @@ export function dumpEnter() {
 }
 
 export function dumpSelect(dir: -1 | 1) {
-  const { items, selectedId } = get()
+  const { selectedId } = get()
+  const items = treeOrder(get().items)
   if (!items.length) return
   const i = items.findIndex((it) => it.id === selectedId)
   const next = i === -1 ? (dir > 0 ? 0 : items.length - 1) : clamp(i + dir, 0, items.length - 1)
@@ -325,15 +463,56 @@ export function dumpSelect(dir: -1 | 1) {
 export function dumpDelete() {
   const item = findItem(get().selectedId)
   if (!item) return
-  const { prev, next } = neighbours(item.id)
-  removeItem(item.id)
-  set({ selectedId: next ?? prev })
-  toast(`Deleted "${truncate(item.text)}"`, 'mod+z')
+  const at = treeOrder(get().items).findIndex((i) => i.id === item.id)
+  const kids = removeItem(item.id)
+  const after = treeOrder(get().items)
+  set({ selectedId: after[Math.min(at, after.length - 1)]?.id ?? null })
+  if (!kids) toast(`Deleted "${truncate(item.text)}"`, 'mod+z')
 }
 
 export function dumpMove(dir: -1 | 1) {
   const { selectedId } = get()
   if (selectedId) moveItem(selectedId, dir)
+}
+
+/** Tab / ⇧Tab on the selected thought. */
+export function dumpIndent(dir: 1 | -1) {
+  const { selectedId } = get()
+  if (selectedId) (dir > 0 ? indentItem : outdentItem)(selectedId)
+}
+
+/** ⌥↵: add a subtask to the selected thought (or another one beside it, if it is a subtask). */
+export function dumpAddSub() {
+  const { selectedId } = get()
+  if (selectedId) set({ editing: draftSub(selectedId) })
+}
+
+/** The same chord while typing: save this line, then open a subtask line under it. */
+export function editorAddSub(target: EditTarget, value: string) {
+  const id = commitEditor(target, value)
+  if (id) set({ editing: draftSub(id), selectedId: id })
+}
+
+/** Tab / ⇧Tab while typing. A new line just changes where it will land; an existing one moves now. */
+export function editorIndent(target: EditTarget, value: string, dir: 1 | -1) {
+  const { items } = get()
+  if (target.kind === 'draft') {
+    if (dir > 0) {
+      const above = target.afterId ? items.find((i) => i.id === target.afterId) : undefined
+      if (target.parentId || !above) return toast(above ? 'Already a subtask. One level deep keeps it simple' : 'Nothing above to nest under')
+      const parent = parentKey(items, above) ?? above.id
+      set({ editing: { ...target, parentId: parent, afterId: lastInBlock(items, parent) } })
+    } else {
+      if (!target.parentId) return toast('Already top-level')
+      set({ editing: { ...target, parentId: null, afterId: target.parentId } })
+    }
+    return
+  }
+  transact(() => {
+    const text = value.trim()
+    if (text) updateText(target.id, text)
+    ;(dir > 0 ? indentItem : outdentItem)(target.id)
+  })
 }
 
 export function dumpToggleDone() {

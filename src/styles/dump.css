@@ -133,6 +133,68 @@
   color: var(--accent-fg);
 }
 
+/* A subtask hangs off its parent with a tree branch in the gutter. */
+.row[data-sub] {
+  min-height: 40px;
+  background: color-mix(in srgb, var(--surface) 70%, var(--bg));
+}
+
+.row[data-sub] .row__index {
+  padding-top: 11px;
+  color: var(--line-strong);
+}
+
+.row[data-sub] .row__text,
+.row[data-sub] .row__input {
+  padding: 10px 14px 10px 30px;
+  font-size: 14px;
+}
+
+.row[data-sub] .row__meta {
+  padding-top: 10px;
+}
+
+.row[data-sub][data-selected],
+.row[data-sub][data-editing] {
+  background: var(--surface-2);
+}
+
+.row[data-sub][data-selected] .row__index,
+.row[data-sub][data-editing] .row__index {
+  color: var(--accent-fg);
+}
+
+.row__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Where a subtask came from, shown wherever the subtask is listed on its own. */
+.parent-ref {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font: 11px/16px var(--font-mono);
+  color: var(--text-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parent-ref--row {
+  margin: -8px 14px 11px;
+}
+
+.parent-ref--chip {
+  font-size: 10.5px;
+  line-height: 14px;
+}
+
+.parent-ref--card {
+  margin-left: auto;
+  max-width: 55%;
+}
+
 .row[data-done] .row__text {
   color: var(--text-3);
   text-decoration: line-through;
@@ -216,6 +278,10 @@
   }
   .row {
     grid-template-columns: 36px minmax(0, 1fr);
+  }
+  .row[data-sub] .row__text,
+  .row[data-sub] .row__input {
+    padding-left: 18px;
   }
   .row__index {
     grid-row: span 2;

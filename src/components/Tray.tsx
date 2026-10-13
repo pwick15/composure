@@ -7,6 +7,7 @@ import type { Item } from '../lib/types'
 import { trayCancel, trayCommit, truncate } from '../state/actions'
 import { getState, useStore, type TrayExit } from '../state/store'
 import { Kbd } from './Kbd'
+import { ParentRef } from './Tags'
 
 /** What the last filing key did, shown under the card with the way back. */
 export interface Receipt {
@@ -108,7 +109,10 @@ export function Tray({ label, done, total, current, ahead, tags, idle, empty, re
               exit="exit"
             >
               <div className="card__inner">
-                <div className="card__top">{tags}</div>
+                <div className="card__top">
+                  {tags}
+                  <ParentRef item={current} className="parent-ref--card" />
+                </div>
                 {editing === current.id ? (
                   <TrayEditor item={current} />
                 ) : (

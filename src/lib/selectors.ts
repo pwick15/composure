@@ -1,11 +1,13 @@
 import { columnFor, isOverdue, planColumns } from './dates'
 import { QUADRANTS, QUADRANT_RANK } from './quadrants'
+import { leaves } from './tree'
 import type { Item } from './types'
 
 // ---------------------------------------------------------------- sort
 
 /** Sort's lists in reading order: the unsorted queue, then Do, Schedule, Delegate, Drop. */
-export function sortGroups(items: Item[]): Item[][] {
+export function sortGroups(all: Item[]): Item[][] {
+  const items = leaves(all)
   return [items.filter((i) => !i.quadrant), ...QUADRANTS.map((q) => items.filter((i) => i.quadrant === q.id))]
 }
 
@@ -13,7 +15,8 @@ export function sortGroups(items: Item[]): Item[][] {
 export const sortOrder = (items: Item[]) => sortGroups(items).flat()
 
 /** The stored cursor if it still exists, else the first unsorted item. */
-export function resolveSortCursor(items: Item[], cursor: string | null): string | null {
+export function resolveSortCursor(all: Item[], cursor: string | null): string | null {
+  const items = leaves(all)
   if (cursor && items.some((i) => i.id === cursor)) return cursor
   return items.find((i) => !i.quadrant)?.id ?? null
 }
@@ -23,8 +26,8 @@ export function resolveSortCursor(items: Item[], cursor: string | null): string 
 export const isPlannable = (item: Item) => item.quadrant !== 'drop'
 
 /** Items still waiting for a day: overdue first, then by quadrant priority, then list order. */
-export function planQueue(items: Item[], today: string): Item[] {
-  return items
+export function planQueue(all: Item[], today: string): Item[] {
+  return leaves(all)
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => isPlannable(item) && !item.done && columnFor(item.slot, today) === null)
     .sort((a, b) => {
@@ -59,14 +62,15 @@ export function nextInQueue(queue: Item[], currentId: string): string | null {
   return null
 }
 
-export function itemsInColumn(items: Item[], col: string, today: string): Item[] {
-  return items.filter((i) => isPlannable(i) && columnFor(i.slot, today) === col)
+export function itemsInColumn(all: Item[], col: string, today: string): Item[] {
+  return leaves(all).filter((i) => isPlannable(i) && columnFor(i.slot, today) === col)
 }
 
 // ---------------------------------------------------------------- today
 
 /** Today's plan: anything overdue and unfinished first, then today's thoughts in list order. */
-export function todayList(items: Item[], today: string): Item[] {
+export function todayList(all: Item[], today: string): Item[] {
+  const items = leaves(all)
   const overdue = items.filter((i) => isPlannable(i) && !i.done && isOverdue(i.slot, today))
   return [...overdue, ...items.filter((i) => isPlannable(i) && i.slot === today)]
 }
@@ -82,7 +86,7 @@ export function clarity(items: Item[], today: string) {
   const list = todayList(items, today)
   return {
     total: items.length,
-    dropped: items.filter((i) => i.quadrant === 'drop').length,
+    dropped: leaves(items).filter((i) => i.quadrant === 'drop').length,
     today: list.length,
     doneToday: list.filter((i) => i.done).length,
   }

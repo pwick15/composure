@@ -4,7 +4,7 @@ import type { Item, Mode, Theme } from '../lib/types'
 
 export type Editing =
   | { kind: 'item'; id: string; caret: 'start' | 'end' }
-  | { kind: 'draft'; afterId: string | null; seed: string; nonce: number }
+  | { kind: 'draft'; afterId: string | null; parentId: string | null; seed: string; nonce: number }
   | null
 
 export interface Toast {
@@ -91,7 +91,12 @@ export const useStore = create<State>()(
       }),
     {
       name: 'composure:v1',
-      version: 1,
+      version: 2,
+      // v2 added subtasks: older thoughts are all top-level.
+      migrate: (persisted) => {
+        const old = persisted as { items?: Partial<Item>[] }
+        return { ...old, items: (old.items ?? []).map((i) => ({ ...i, parentId: i.parentId ?? null })) } as State
+      },
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({ items: s.items, mode: s.mode, theme: s.theme, hud: s.hud, focus: s.focus }),
     },

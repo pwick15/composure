@@ -4,6 +4,7 @@ import { matrixMarkdown, parseBackup, planICS, planMarkdown, thingsURL } from '.
 import { fuzzyBest, fuzzyMatch } from './fuzzy'
 import { planGroups, planQueue, sortOrder } from './selectors'
 import { splitLines } from './text'
+import { isDone, leaves, progress, treeOrder } from './tree'
 import type { Item } from './types'
 
 const TODAY = '2026-10-12' // a Monday
@@ -16,6 +17,7 @@ const item = (text: string, extra: Partial<Item> = {}): Item => ({
   quadrant: null,
   slot: null,
   done: false,
+  parentId: null,
   ...extra,
 })
 
@@ -155,5 +157,61 @@ describe('export', () => {
     expect(() => parseBackup('{"hello":1}')).toThrow('Not a Composure backup')
     const ok = parseBackup(JSON.stringify({ app: 'composure', version: 1, items: [{ id: 'a', text: 'x', quadrant: 'nope' }] }))
     expect(ok[0]).toMatchObject({ id: 'a', text: 'x', quadrant: null, slot: null, done: false })
+  })
+})
+
+describe('subtasks', () => {
+  const trip = item('Plan trip', { quadrant: 'schedule' })
+  const flights = item('book flights', { parentId: trip.id, quadrant: 'do', slot: TODAY })
+  const rent = item('Pay rent')
+  const hotel = item('book hotel', { parentId: trip.id })
+  // Stored order is not Dump order: subtasks can sit anywhere after their parent.
+  const all = [trip, rent, flights, hotel]
+
+  it('treeOrder puts subtasks under their parent; leaves skips the parent', () => {
+    expect(treeOrder(all).map((i) => i.text)).toEqual(['Plan trip', 'book flights', 'book hotel', 'Pay rent'])
+    expect(leaves(all).map((i) => i.text)).toEqual(['Pay rent', 'book flights', 'book hotel'])
+  })
+
+  it('an orphan whose parent is gone is shown and used as a normal thought', () => {
+    const lost = item('lost', { parentId: 'gone' })
+    expect(treeOrder([lost]).map((i) => i.text)).toEqual(['lost'])
+    expect(leaves([lost])).toHaveLength(1)
+  })
+
+  it('Sort and Plan only see the subtasks', () => {
+    expect(sortOrder(all).map((i) => i.text)).toEqual(['Pay rent', 'book hotel', 'book flights'])
+    expect(planQueue(all, TODAY).map((i) => i.text)).toEqual(['Pay rent', 'book hotel'])
+  })
+
+  it('a parent is done when all its subtasks are', () => {
+    expect(isDone(all, trip)).toBe(false)
+    const ticked = all.map((i) => (i.parentId ? { ...i, done: true } : i))
+    expect(isDone(ticked, ticked[0])).toBe(true)
+    expect(progress(ticked, trip.id)).toEqual({ done: 2, total: 2 })
+    expect(progress(all, rent.id)).toBeNull()
+  })
+
+  it('exports list the subtasks and name the parent', () => {
+    expect(matrixMarkdown(all)).toContain('- [ ] book flights · Plan trip')
+    expect(matrixMarkdown(all)).not.toContain('- [ ] Plan trip')
+    expect(planMarkdown(all, TODAY)).toContain('- [ ] book flights · Plan trip')
+    expect(planICS(all, TODAY)).toContain('DESCRIPTION:Part of: Plan trip')
+    expect(decodeURIComponent(thingsURL(all, TODAY)!)).toContain('Part of: Plan trip')
+  })
+
+  it('backups keep subtasks, and drop links that point nowhere or nest too deep', () => {
+    const json = JSON.stringify({
+      app: 'composure',
+      version: 2,
+      items: [
+        { id: 'p', text: 'p' },
+        { id: 'c', text: 'c', parentId: 'p' },
+        { id: 'g', text: 'g', parentId: 'c' },
+        { id: 'x', text: 'x', parentId: 'missing' },
+        { id: 'self', text: 'self', parentId: 'self' },
+      ],
+    })
+    expect(parseBackup(json).map((i) => i.parentId)).toEqual([null, 'p', null, null, null])
   })
 })
