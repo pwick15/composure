@@ -45,8 +45,19 @@ function hintsFor(s: State): Hint[] {
     ]
   }
 
-  if (s.mode === 'today')
+  if (s.mode === 'today') {
+    if (s.todayAdd)
+      return s.todayAdd.cursor
+        ? [
+            h(['left', 'right'], 'option'),
+            h(['up', 'down'], 'row'),
+            h('enter', 'pick'),
+            h('shift+enter', 'add'),
+            h('backspace', 'back to text'),
+          ]
+        : [h('enter', 'add'), h('down', 'options'), h('⇧ ⇧', 'done', true), h('escape', 'close')]
     return [
+      h('n', 'add'),
       h(['up', 'down'], 'move'),
       h('x', 'done'),
       h('t', 'not today'),
@@ -54,6 +65,7 @@ function hintsFor(s: State): Hint[] {
       h(['-', '='], 'time'),
       h('alt+left', 'plan'),
     ]
+  }
 
   if (s.trayEditing) return [h('enter', 'save'), h('escape', 'cancel')]
 

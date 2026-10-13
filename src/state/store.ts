@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import type { Item, Mode, Theme } from '../lib/types'
+import type { Item, Mode, Quadrant, Theme } from '../lib/types'
 
 export type Editing =
   | { kind: 'item'; id: string; caret: 'start' | 'end' }
@@ -50,6 +50,13 @@ export interface State {
 
   // today
   todayCursor: string | null
+  /** The "add a task" line on Today while it's open, with what the next task will be filed as. */
+  todayAdd: {
+    quadrant: Quadrant | null
+    minutes: number | null
+    /** Which option arrow keys are on, or null while the cursor is in the text. */
+    cursor: { row: number; col: number } | null
+  } | null
   /** A running focus block on one thought. Persisted, so it survives a reload. */
   focus: { id: string; endsAt: number; minutes: number } | null
 
@@ -80,6 +87,7 @@ export const useStore = create<State>()(
         landed: null,
 
         todayCursor: null,
+        todayAdd: null,
         focus: null,
 
         palette: { open: false, seed: '', nonce: 0 },

@@ -14,7 +14,7 @@ import {
 } from '../lib/selectors'
 import { childrenOf, draftIndex, isDone, lastInBlock, parentKey, treeOrder } from '../lib/tree'
 import type { Item, Mode, Quadrant } from '../lib/types'
-import { type Deck, type Editing, freshDeck, getState as get, setState as set, type TrayExit } from './store'
+import { type Deck, type Editing, freshDeck, getState as get, setState as set, type State, type TrayExit } from './store'
 
 export type EditTarget = Exclude<Editing, null>
 
@@ -300,6 +300,7 @@ function resetCursors() {
     trayEditing: null,
     landed: null,
     todayCursor: null,
+    todayAdd: null,
   })
 }
 
@@ -825,6 +826,106 @@ export function todayDefer() {
   patch(cur.id, { slot: addDays(todayKey(), 1) })
   set({ todayCursor: next?.id ?? null })
   toast(`"${truncate(cur.text, 24)}" moved to tomorrow`, 'mod+z')
+}
+
+// ---------------------------------------------------------------- add on Today
+//
+// N opens a line at the top of Today. Type a task and ↵ puts it in today's plan and opens the
+// next line. To say what it is first, ↓ moves down into the options (quadrant, then time):
+// ←/→ walk along a row, ↑/↓ change row, ↵ picks (again to clear), and ⇧↵ adds the task from
+// anywhere. What you picked stays picked until the line closes.
+
+/** The rows of options under the add line. */
+export const ADD_OPTIONS = {
+  quadrant: QUADRANTS.filter((q) => q.id !== 'drop').map((q) => q.id), // a dropped task has no place in today
+  minutes: PRESETS,
+}
+const ADD_ROWS = [ADD_OPTIONS.quadrant, ADD_OPTIONS.minutes] as const
+
+export function todayAddOpen() {
+  if (!get().todayAdd) set({ todayAdd: { quadrant: null, minutes: null, cursor: null } })
+}
+
+/** Picks a quadrant for what's being added; picking the same one again clears it. */
+export function todayAddQuadrant(quadrant: Quadrant) {
+  const add = get().todayAdd
+  if (add) set({ todayAdd: { ...add, quadrant: add.quadrant === quadrant ? null : quadrant } })
+}
+
+export function todayAddMinutes(minutes: number) {
+  const add = get().todayAdd
+  if (add) set({ todayAdd: { ...add, minutes: add.minutes === minutes ? null : minutes } })
+}
+
+/** Where a row's cursor should start: on what is picked there, else the first option. */
+const startCol = (add: NonNullable<State['todayAdd']>, row: number) =>
+  Math.max(0, (ADD_ROWS[row] as readonly unknown[]).indexOf(row === 0 ? add.quadrant : add.minutes))
+
+/** Arrow keys on the options. Returns false when the arrow isn't for them (so the text can have it). */
+export function todayAddArrow(dir: 'up' | 'down' | 'left' | 'right'): boolean {
+  const add = get().todayAdd
+  if (!add) return false
+  const at = add.cursor
+  const move = (cursor: { row: number; col: number } | null) => set({ todayAdd: { ...add, cursor } })
+  if (!at) {
+    if (dir !== 'down') return false
+    move({ row: 0, col: startCol(add, 0) })
+  } else if (dir === 'left' || dir === 'right') {
+    const col = clamp(at.col + (dir === 'left' ? -1 : 1), 0, ADD_ROWS[at.row].length - 1)
+    move({ row: at.row, col })
+  } else {
+    const row = at.row + (dir === 'down' ? 1 : -1)
+    move(row < 0 ? null : row >= ADD_ROWS.length ? at : { row, col: startCol(add, row) })
+  }
+  return true
+}
+
+/** ↵ on an option: pick it, or clear it if it was already picked. */
+export function todayAddPick() {
+  const cursor = get().todayAdd?.cursor
+  if (!cursor) return
+  if (cursor.row === 0) todayAddQuadrant(ADD_OPTIONS.quadrant[cursor.col])
+  else todayAddMinutes(ADD_OPTIONS.minutes[cursor.col])
+}
+
+/** Back to the text: typing, ⌫ or ↑ from the first row. */
+export function todayAddBackToText() {
+  const add = get().todayAdd
+  if (add?.cursor) set({ todayAdd: { ...add, cursor: null } })
+}
+
+/** Adds one task per non-empty line to today's plan, filed as the chips say. Returns the last one's id. */
+function todayAddTasks(texts: string[]): string | null {
+  const add = get().todayAdd
+  const created = texts
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => ({ ...makeItem(t), quadrant: add?.quadrant ?? null, minutes: add?.minutes ?? null, slot: todayKey() }))
+  if (!created.length) return null
+  commit([...get().items, ...created])
+  const id = created.at(-1)!.id
+  set({ todayCursor: id })
+  return id
+}
+
+/** ↵: add it and stay on the line for the next one. An empty line closes instead. */
+export function todayAddEnter(value: string) {
+  if (!todayAddTasks([value])) return set({ todayAdd: null })
+  todayAddBackToText()
+}
+
+/** Esc, ⌫ on an empty line, clicking away: keep what was typed, then close. */
+export function todayAddClose(value: string) {
+  if (!get().todayAdd) return
+  todayAddTasks([value])
+  set({ todayAdd: null })
+}
+
+/** Pasting several lines adds them all, each filed the same way. */
+export function todayAddPaste(merged: string, rest: string[]) {
+  const n = [merged, ...rest].filter((t) => t.trim()).length
+  todayAddTasks([merged, ...rest])
+  toast(`Added ${n} ${n === 1 ? 'task' : 'tasks'} to today`, 'mod+z')
 }
 
 export function todayFocus(id: string) {

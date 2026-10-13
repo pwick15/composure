@@ -63,6 +63,18 @@ describe('screens', () => {
     expect(html).toContain('2h') // today's total
   })
 
+  it('Today shows the add line with its quadrant and time chips, and marks what is picked', () => {
+    seed()
+    Object.assign(snapshot, { todayAdd: { quadrant: 'do', minutes: 30, cursor: { row: 1, col: 2 } } })
+    setState({ todayAdd: { quadrant: 'do', minutes: 30, cursor: { row: 1, col: 2 } } })
+    const html = render(<TodayMode />)
+    expect(html).toContain('Add a task for today')
+    expect(html).toContain('today-add__attrs')
+    expect(html.match(/class="attr"/g)).toHaveLength(9) // Do, Schedule, Delegate and six times
+    expect(html.match(/data-on="true"/g)).toHaveLength(2)
+    expect(html.match(/data-cursor="true"/g)).toHaveLength(1) // the arrow keys' place: 30m
+  })
+
   it('Today lists the subtasks with times and adds the day up', () => {
     seed()
     const html = render(<TodayMode />)

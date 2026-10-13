@@ -612,3 +612,135 @@ describe('export and import', () => {
     expect(getState().toasts.at(-1)?.text).toBe('Nothing to import in that file')
   })
 })
+
+// ---------------------------------------------------------------- add on Today
+
+describe('add on Today', () => {
+  const task = (text: string) => getState().items.find((i) => i.text === text)!
+
+  it('N, type, ↵ puts a task in today\'s plan and keeps the line open for the next', () => {
+    a.setMode('today')
+    a.todayAddOpen()
+    a.todayAddEnter('call dentist')
+    expect(task('call dentist')).toMatchObject({ slot: todayKey(), quadrant: null, minutes: null, done: false })
+    expect(getState().todayAdd).not.toBeNull()
+    expect(a.todayCurrent()?.text).toBe('call dentist')
+  })
+
+  it('quadrant and time picked on the line are applied, and stay picked for the next task', () => {
+    a.setMode('today')
+    a.todayAddOpen()
+    a.todayAddQuadrant('do')
+    a.todayAddMinutes(15)
+    a.todayAddEnter('call dentist')
+    a.todayAddEnter('pay rent')
+    expect(task('call dentist')).toMatchObject({ quadrant: 'do', minutes: 15 })
+    expect(task('pay rent')).toMatchObject({ quadrant: 'do', minutes: 15 })
+  })
+
+  it('picking the same quadrant or time again clears it', () => {
+    a.setMode('today')
+    a.todayAddOpen()
+    a.todayAddQuadrant('schedule')
+    a.todayAddQuadrant('schedule')
+    a.todayAddMinutes(30)
+    a.todayAddMinutes(30)
+    expect(getState().todayAdd).toEqual({ quadrant: null, minutes: null, cursor: null })
+  })
+
+  it('an empty ↵ closes the line; Esc keeps what was typed', () => {
+    a.setMode('today')
+    a.todayAddOpen()
+    a.todayAddEnter('  ')
+    expect(getState().todayAdd).toBeNull()
+    expect(getState().items).toHaveLength(0)
+
+    a.todayAddOpen()
+    a.todayAddClose('unfinished thought')
+    expect(getState().todayAdd).toBeNull()
+    expect(task('unfinished thought').slot).toBe(todayKey())
+    a.todayAddClose('again') // closing twice (Esc, then the blur it causes) adds nothing more
+    expect(getState().items).toHaveLength(1)
+  })
+
+  it('a pasted list adds every line, and is one undo step', () => {
+    a.setMode('today')
+    a.todayAddOpen()
+    a.todayAddQuadrant('delegate')
+    a.todayAddPaste('one', ['two', 'three'])
+    expect(getState().items.map((i) => [i.text, i.quadrant])).toEqual([
+      ['one', 'delegate'],
+      ['two', 'delegate'],
+      ['three', 'delegate'],
+    ])
+    a.undo()
+    expect(getState().items).toHaveLength(0)
+  })
+
+  it('new tasks land in the list in order: quadrant, then quickest first, and add to the day total', () => {
+    a.setMode('today')
+    a.todayAddOpen()
+    a.todayAddMinutes(60)
+    a.todayAddQuadrant('do')
+    a.todayAddEnter('long one')
+    a.todayAddMinutes(60)
+    a.todayAddMinutes(5)
+    a.todayAddEnter('quick one')
+    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['quick one', 'long one'])
+    expect(a.todayCurrent()?.text).toBe('quick one')
+  })
+
+  it('leaving the screen closes the line', () => {
+    a.setMode('today')
+    a.todayAddOpen()
+    a.setMode('plan')
+    expect(getState().todayAdd).toBeNull()
+  })
+
+  it('↓ moves into the options, arrows walk them, ↵ picks, ⇧↵ adds; nothing needs a shortcut', () => {
+    a.setMode('today')
+    a.todayAddOpen()
+    expect(a.todayAddArrow('right')).toBe(false) // in the text, sideways arrows belong to the text
+    expect(a.todayAddArrow('up')).toBe(false)
+    expect(a.todayAddArrow('down')).toBe(true)
+    expect(getState().todayAdd?.cursor).toEqual({ row: 0, col: 0 })
+    a.todayAddArrow('right')
+    a.todayAddArrow('right') // Do → Schedule → Delegate
+    a.todayAddArrow('right') // stops at the end of the row
+    a.todayAddPick()
+    expect(getState().todayAdd?.quadrant).toBe('delegate')
+    a.todayAddArrow('down')
+    expect(getState().todayAdd?.cursor).toEqual({ row: 1, col: 0 })
+    a.todayAddArrow('right')
+    a.todayAddArrow('right')
+    a.todayAddPick() // 5m → 15m → 30m
+    expect(getState().todayAdd?.minutes).toBe(30)
+    a.todayAddArrow('down') // no row below: stays put
+    expect(getState().todayAdd?.cursor).toEqual({ row: 1, col: 2 })
+
+    a.todayAddEnter('write report')
+    expect(task('write report')).toMatchObject({ quadrant: 'delegate', minutes: 30 })
+    expect(getState().todayAdd?.cursor).toBeNull() // back in the text for the next one
+  })
+
+  it('↵ on a picked option clears it; ↑ from the first row goes back to the text', () => {
+    a.setMode('today')
+    a.todayAddOpen()
+    a.todayAddArrow('down')
+    a.todayAddPick()
+    expect(getState().todayAdd?.quadrant).toBe('do')
+    a.todayAddPick()
+    expect(getState().todayAdd?.quadrant).toBeNull()
+    a.todayAddArrow('up')
+    expect(getState().todayAdd?.cursor).toBeNull()
+  })
+
+  it('moving down a row starts on what is already picked there', () => {
+    a.setMode('today')
+    a.todayAddOpen()
+    a.todayAddMinutes(60)
+    a.todayAddArrow('down')
+    a.todayAddArrow('down')
+    expect(getState().todayAdd?.cursor).toEqual({ row: 1, col: 3 })
+  })
+})

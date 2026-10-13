@@ -454,6 +454,16 @@ export const COMMANDS: Command[] = [
     run: a.todayToggle,
   },
   {
+    id: 'today.add',
+    title: 'Add a task to today',
+    hud: 'Add',
+    group: 'Today',
+    scope: 'today',
+    keys: ['n'],
+    keywords: 'new create task quick add',
+    run: a.todayAddOpen,
+  },
+  {
     id: 'today.defer',
     title: 'Not today: move to tomorrow',
     hud: '→ Tomorrow',
