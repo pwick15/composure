@@ -1,34 +1,63 @@
 import { useEffect } from 'react'
 import { todayKey } from '../lib/dates'
+import { iconLabel, timerIcon } from '../lib/favicon'
 import { openInSession } from '../lib/selectors'
-import { activeId, clock, leftovers, remainingMs } from '../lib/session'
+import { activeId, clock, leftovers, remainingMs, windowOf } from '../lib/session'
 import { startTicker } from '../lib/ticker'
 import { sessionSync } from '../state/actions'
 import { getState, useStore } from '../state/store'
 
-/** The tab title while a session runs, so the countdown shows on the tab itself. */
-function titleFor(): string | null {
+/** What the tab shows for the running session: a title, and the icon's text and ring. */
+function tabState() {
   const { run, items } = getState()
   if (!run) return null
+  const now = Date.now()
   const open = new Set(openInSession(items, todayKey(), run.session).map((i) => i.id))
-  if (run.phase === 'over') return `Time's up · ${leftovers(run, open).length} left`
+  if (run.phase === 'over') {
+    return { title: `Time's up · ${leftovers(run, open).length} left`, icon: { label: '!', progress: 1, over: true } }
+  }
+  const left = remainingMs(run, items, open, now)
   const task = items.find((i) => i.id === activeId(run))
-  return `${clock(remainingMs(run, items, open, Date.now()))} · ${task?.text ?? 'Session'}`
+  const win = windowOf(run, items)
+  return {
+    title: `${clock(left)} · ${task?.text ?? 'Session'}`,
+    icon: { label: iconLabel(left), progress: win ? (now - win.start) / win.ms : 0, over: false },
+  }
 }
 
 /**
  * Keeps a running session moving: closes task windows as they run out, even when this tab is in the
- * background, and mirrors the countdown in the tab title. Renders nothing.
+ * background, and mirrors the countdown on the tab itself (title and icon) so you can read it from
+ * any other window. Renders nothing.
  */
 export function SessionDriver() {
   const phase = useStore((s) => s.run?.phase ?? null)
 
   useEffect(() => {
     if (!phase) return
-    const original = document.title
+    const originalTitle = document.title
+    let link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
+    if (!link) {
+      link = Object.assign(document.createElement('link'), { rel: 'icon' })
+      document.head.append(link)
+    }
+    const originalHref = link.href
+    const originalType = link.type
+    let drawn = ''
+
     const tick = () => {
       sessionSync()
-      document.title = titleFor() ?? original
+      const tab = tabState()
+      document.title = tab?.title ?? originalTitle
+      if (!tab || !link) return
+      // Redraw only when the picture would change: the number, or a visible step of the ring.
+      const key = `${tab.icon.label}:${Math.round(tab.icon.progress * 48)}:${tab.icon.over}`
+      if (key === drawn) return
+      const url = timerIcon(tab.icon)
+      if (!url) return
+      drawn = key
+      link.type = 'image/png'
+      link.href = url
     }
     tick()
     const stop = phase === 'running' ? startTicker(tick) : () => {}
@@ -36,7 +65,11 @@ export function SessionDriver() {
     return () => {
       stop()
       document.removeEventListener('visibilitychange', tick)
-      document.title = original
+      document.title = originalTitle
+      if (link) {
+        link.href = originalHref
+        link.type = originalType
+      }
     }
   }, [phase])
 

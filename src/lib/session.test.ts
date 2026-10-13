@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { iconLabel } from './favicon'
 import { advance, clock, effMinutes, leftovers, remainingMs, startRun, type Run } from './session'
 import type { Item } from './types'
 
@@ -88,5 +89,21 @@ describe('work session timing', () => {
 
   it('writes clocks as mm:ss, with hours when there are some', () => {
     expect([0, 754_000, 3_725_000, 59_001].map(clock)).toEqual(['00:00', '12:34', '1:02:05', '01:00'])
+  })
+})
+
+describe('tab icon', () => {
+  it('writes minutes left, rounding up so it never says 0 early, and hours past 99 minutes', () => {
+    expect([59_000, 60_000, 61_000, 25 * MIN, 99 * MIN, 100 * MIN, 120 * MIN, 150 * MIN, 0].map(iconLabel)).toEqual([
+      '1',
+      '1',
+      '2',
+      '25',
+      '99',
+      '2h',
+      '2h',
+      '3h',
+      '0',
+    ])
   })
 })
