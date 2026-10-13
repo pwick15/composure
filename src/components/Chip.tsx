@@ -1,5 +1,6 @@
 import { motion } from 'motion/react'
 import type { Ref } from 'react'
+import { fmt } from '../lib/duration'
 import { EXIT_FAST, keepFocus } from '../lib/motion'
 import type { Item } from '../lib/types'
 import { ParentRef } from './Tags'
@@ -39,7 +40,9 @@ export function Chip({ item, ref, selected, fresh, meta, onSelect }: ChipProps) 
         <span className="chip__text">{item.text}</span>
         <ParentRef item={item} className="parent-ref--chip" />
       </span>
-      {meta && <span className="chip__meta">{meta}</span>}
+      {(meta || item.minutes) && (
+        <span className="chip__meta">{[meta, item.minutes && fmt(item.minutes)].filter(Boolean).join(' · ')}</span>
+      )}
     </motion.div>
   )
 }

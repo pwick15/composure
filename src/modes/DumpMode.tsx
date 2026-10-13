@@ -2,14 +2,15 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, type ClipboardEvent, type KeyboardEvent, type Ref } from 'react'
 import { flushSync } from 'react-dom'
 import { Kbd } from '../components/Kbd'
-import { DoneTag, QuadrantTag, SlotTag } from '../components/Tags'
+import { DoneTag, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
 import { feedback } from '../keyboard/feedback'
 import { isMac } from '../keyboard/keys'
 import { todayKey } from '../lib/dates'
 import { autosize } from '../lib/dom'
 import { EXIT_FAST, keepFocus } from '../lib/motion'
 import { splitLines } from '../lib/text'
-import { draftIndex, isDone, leaves, parentIds, progress, treeOrder } from '../lib/tree'
+import { sumMinutes } from '../lib/duration'
+import { childrenOf, draftIndex, isDone, leaves, parentIds, progress, treeOrder } from '../lib/tree'
 import type { Item } from '../lib/types'
 import {
   editorAddSub,
@@ -167,6 +168,8 @@ interface RowProps {
   sub: boolean
   /** Subtasks done out of subtasks, when this thought has any. */
   kids: { done: number; total: number } | null
+  /** What a parent's subtasks add up to, or this thought's own estimate. */
+  minutes: number | null
   done: boolean
   selected: boolean
   editing: EditTarget | null
@@ -174,7 +177,7 @@ interface RowProps {
   ref?: Ref<HTMLLIElement>
 }
 
-function Row({ item, gutter, sub, kids, done, selected, editing, today, ref }: RowProps) {
+function Row({ item, gutter, sub, kids, minutes, done, selected, editing, today, ref }: RowProps) {
   const quiet = bornInPlace.has(item.id)
   return (
     <motion.li
@@ -199,13 +202,17 @@ function Row({ item, gutter, sub, kids, done, selected, editing, today, ref }: R
       <span className="row__meta">
         <DoneTag item={item} done={done} />
         {kids ? (
-          <span className="tag" title="Subtasks done">
-            {kids.done}/{kids.total}
-          </span>
+          <>
+            <TimeTag item={item} minutes={minutes} />
+            <span className="tag" title="Subtasks done">
+              {kids.done}/{kids.total}
+            </span>
+          </>
         ) : (
           <>
             {item.quadrant && <QuadrantTag item={item} />}
             <SlotTag item={item} today={today} />
+            <TimeTag item={item} />
           </>
         )}
       </span>
@@ -299,6 +306,7 @@ export function DumpMode() {
         gutter={sub ? (lastSibling ? '└' : '├') : String(top).padStart(2, '0')}
         sub={sub}
         kids={parents.has(item.id) ? progress(items, item.id) : null}
+        minutes={parents.has(item.id) ? sumMinutes(childrenOf(items, item.id)) || null : item.minutes}
         done={isDone(items, item)}
         selected={selectedId === item.id}
         editing={editing?.kind === 'item' && editing.id === item.id ? editing : null}

@@ -8,7 +8,7 @@ export interface Combo {
   shift: boolean
 }
 
-const ALIASES: Record<string, string> = { esc: 'escape', return: 'enter', del: 'delete' }
+const ALIASES: Record<string, string> = { esc: 'escape', return: 'enter', del: 'delete', plus: '+' }
 
 const NAMED: Record<string, string> = {
   ArrowUp: 'up',

@@ -463,3 +463,74 @@ describe('subtasks: sort, plan and today', () => {
     expect(parentOf(getState().items, a.todayCurrent()!)?.text).toBe('Plan trip')
   })
 })
+
+// ---------------------------------------------------------------- time estimates
+
+const minutesOf = (text: string) => getState().items.find((i) => i.text === text)!.minutes
+
+describe('time estimates', () => {
+  const plannedToday = (...texts: string[]) => {
+    dump(...texts)
+    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do' as const, slot: todayKey() })) })
+    a.setMode('today')
+  }
+
+  it('1–6 in Sort sets the time and leaves the card where it is', () => {
+    dump('a', 'b')
+    a.setMode('sort')
+    a.estimatePreset(3)
+    expect(minutesOf('a')).toBe(30)
+    expect(a.sortCurrent()?.text).toBe('a')
+    a.deckFile('sort', 'do')
+    expect(a.sortCurrent()?.text).toBe('b')
+    expect(minutesOf('a')).toBe(30)
+  })
+
+  it('= and - step the estimate in Sort, Plan and Today, and undo takes it back', () => {
+    dump('a')
+    a.setMode('sort')
+    a.deckFile('sort', 'do')
+    a.setMode('plan')
+    a.estimateStep(1)
+    expect(minutesOf('a')).toBe(15)
+    a.estimateStep(1)
+    expect(minutesOf('a')).toBe(25)
+    a.undo()
+    expect(minutesOf('a')).toBe(15)
+
+    a.planFileDay(1)
+    a.setMode('today')
+    a.estimateStep(-1)
+    expect(minutesOf('a')).toBe(10)
+  })
+
+  it('does nothing in Dump, and says why', () => {
+    dump('a')
+    a.estimateStep(1)
+    expect(minutesOf('a')).toBeNull()
+    expect(getState().toasts.at(-1)?.text).toMatch(/Sort, Plan and Today/)
+  })
+
+  it('F focuses for as long as the task was estimated, 25 minutes when it was not', () => {
+    plannedToday('a', 'b')
+    setState({ items: getState().items.map((i) => (i.text === 'a' ? { ...i, minutes: 90 } : i)) })
+    a.focusToggle()
+    expect(getState().focus).toMatchObject({ minutes: 90 })
+    a.focusStop()
+    a.todayMove(1)
+    a.focusToggle()
+    expect(getState().focus).toMatchObject({ minutes: 25 })
+  })
+
+  it('Today lists quickest first inside a quadrant, and re-sorts when an estimate changes', () => {
+    plannedToday('slow', 'quick')
+    setState({
+      items: getState().items.map((i) => ({ ...i, quadrant: 'do' as const, minutes: i.text === 'slow' ? 60 : 5 })),
+    })
+    const order = () => todayList(getState().items, todayKey()).map((i) => i.text)
+    expect(order()).toEqual(['quick', 'slow'])
+    a.todayFocus(getState().items.find((i) => i.text === 'quick')!.id)
+    for (let i = 0; i < 7; i++) a.estimateStep(1) // 5 → 10 → 15 → 25 → 30 → 45 → 60 → 90m
+    expect(order()).toEqual(['slow', 'quick'])
+  })
+})

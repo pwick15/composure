@@ -91,11 +91,12 @@ export const useStore = create<State>()(
       }),
     {
       name: 'composure:v1',
-      version: 2,
-      // v2 added subtasks: older thoughts are all top-level.
+      version: 3,
+      // v2 added subtasks (older thoughts are all top-level), v3 added time estimates (none yet).
       migrate: (persisted) => {
         const old = persisted as { items?: Partial<Item>[] }
-        return { ...old, items: (old.items ?? []).map((i) => ({ ...i, parentId: i.parentId ?? null })) } as State
+        const items = (old.items ?? []).map((i) => ({ ...i, parentId: i.parentId ?? null, minutes: i.minutes ?? null }))
+        return { ...old, items } as State
       },
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({ items: s.items, mode: s.mode, theme: s.theme, hud: s.hud, focus: s.focus }),

@@ -1,4 +1,5 @@
 import { isOverdue, slotLabel } from '../lib/dates'
+import { fmt } from '../lib/duration'
 import { QUADRANT_BY_ID } from '../lib/quadrants'
 import type { Item } from '../lib/types'
 import { useStore } from '../state/store'
@@ -17,6 +18,12 @@ export function SlotTag({ item, today }: { item: Item; today: string }) {
   return (
     <span className={`tag ${isOverdue(item.slot, today) ? 'tag--overdue' : ''}`}>{slotLabel(item.slot, today)}</span>
   )
+}
+
+/** "~30m". With `nudge`, a thought with no estimate says so instead of showing nothing. */
+export function TimeTag({ item, nudge = false, minutes = item.minutes }: { item: Item; nudge?: boolean; minutes?: number | null }) {
+  if (minutes) return <span className="tag tag--time" title="Estimated time">~{fmt(minutes)}</span>
+  return nudge ? <span className="tag tag--muted">no time</span> : null
 }
 
 export function DoneTag({ item, done = item.done }: { item: Item; done?: boolean }) {

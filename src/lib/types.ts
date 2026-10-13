@@ -14,6 +14,8 @@ export interface Item {
   done: boolean
   /** The thought this is a subtask of. One level deep: a subtask never has subtasks of its own. */
   parentId: string | null
+  /** How long it should take, in minutes. Null until you say. */
+  minutes: number | null
 }
 
 export type Theme = 'system' | 'dark' | 'light'

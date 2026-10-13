@@ -1,14 +1,30 @@
 import { columnFor, isOverdue, planColumns } from './dates'
+import { sumMinutes } from './duration'
 import { QUADRANTS, QUADRANT_RANK } from './quadrants'
 import { leaves } from './tree'
 import type { Item } from './types'
+
+// ---------------------------------------------------------------- order
+//
+// Within a quadrant, quick things come first: finishing them early is momentum, and it clears
+// the list fastest. Things with no estimate go last, since nobody knows how long they take.
+
+const rankOf = (i: Item) => (i.quadrant ? QUADRANT_RANK[i.quadrant] : 3)
+const length = (i: Item) => i.minutes ?? Infinity
+const shorterFirst = (a: Item, b: Item) => (length(a) === length(b) ? 0 : length(a) < length(b) ? -1 : 1)
+
+/** Quadrant first, then shortest to longest. The sort is stable, so ties keep Dump order. */
+const tackleOrder = (a: Item, b: Item) => rankOf(a) - rankOf(b) || shorterFirst(a, b)
 
 // ---------------------------------------------------------------- sort
 
 /** Sort's lists in reading order: the unsorted queue, then Do, Schedule, Delegate, Drop. */
 export function sortGroups(all: Item[]): Item[][] {
   const items = leaves(all)
-  return [items.filter((i) => !i.quadrant), ...QUADRANTS.map((q) => items.filter((i) => i.quadrant === q.id))]
+  return [
+    items.filter((i) => !i.quadrant),
+    ...QUADRANTS.map((q) => items.filter((i) => i.quadrant === q.id).sort(shorterFirst)),
+  ]
 }
 
 /** The order ↑/↓ walks in Sort. */
@@ -33,8 +49,7 @@ export function planQueue(all: Item[], today: string): Item[] {
     .sort((a, b) => {
       const overdue = Number(isOverdue(b.item.slot, today)) - Number(isOverdue(a.item.slot, today))
       if (overdue) return overdue
-      const rank = (i: Item) => (i.quadrant ? QUADRANT_RANK[i.quadrant] : 3)
-      return rank(a.item) - rank(b.item) || a.index - b.index
+      return tackleOrder(a.item, b.item) || a.index - b.index
     })
     .map(({ item }) => item)
 }
@@ -63,7 +78,9 @@ export function nextInQueue(queue: Item[], currentId: string): string | null {
 }
 
 export function itemsInColumn(all: Item[], col: string, today: string): Item[] {
-  return leaves(all).filter((i) => isPlannable(i) && columnFor(i.slot, today) === col)
+  return leaves(all)
+    .filter((i) => isPlannable(i) && columnFor(i.slot, today) === col)
+    .sort(tackleOrder)
 }
 
 // ---------------------------------------------------------------- today
@@ -72,7 +89,7 @@ export function itemsInColumn(all: Item[], col: string, today: string): Item[] {
 export function todayList(all: Item[], today: string): Item[] {
   const items = leaves(all)
   const overdue = items.filter((i) => isPlannable(i) && !i.done && isOverdue(i.slot, today))
-  return [...overdue, ...items.filter((i) => isPlannable(i) && i.slot === today)]
+  return [...overdue.sort(tackleOrder), ...items.filter((i) => isPlannable(i) && i.slot === today).sort(tackleOrder)]
 }
 
 export function resolveTodayCursor(items: Item[], cursor: string | null, today: string): string | null {
@@ -89,5 +106,17 @@ export function clarity(items: Item[], today: string) {
     dropped: leaves(items).filter((i) => i.quadrant === 'drop').length,
     today: list.length,
     doneToday: list.filter((i) => i.done).length,
+  }
+}
+
+/** How much time today holds: planned, done and left, plus how many open tasks have no estimate yet. */
+export function timeSummary(items: Item[], today: string) {
+  const list = todayList(items, today)
+  const open = list.filter((i) => !i.done)
+  return {
+    planned: sumMinutes(list),
+    done: sumMinutes(list.filter((i) => i.done)),
+    left: sumMinutes(open),
+    unestimated: open.filter((i) => i.minutes === null).length,
   }
 }

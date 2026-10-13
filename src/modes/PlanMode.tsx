@@ -2,11 +2,13 @@ import { AnimatePresence } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { Chip } from '../components/Chip'
 import { Kbd, Keys } from '../components/Kbd'
-import { DoneTag, QuadrantTag, SlotTag } from '../components/Tags'
+import { DoneTag, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
 import { Tray, type Receipt } from '../components/Tray'
 import { columnFor, isDateSlot, LATER, planColumns, slotLabel, todayKey, type DayColumn } from '../lib/dates'
+import { fmt, sumMinutes } from '../lib/duration'
 import { keepFocus } from '../lib/motion'
 import { isPlannable, itemsInColumn, planQueue, resolvePlanCursor } from '../lib/selectors'
+import { leaves } from '../lib/tree'
 import type { Item } from '../lib/types'
 import { deckFile, deckFocus, setMode } from '../state/actions'
 import { copyPlan, downloadCalendar, sendToThings } from '../state/exporters'
@@ -40,7 +42,10 @@ function DayBox({ col, num, items, currentId, landed, today }: DayProps) {
         <Kbd k={String(num)} size="md" className="day__key" />
         <div className="day__titles">
           <h3>{col.label}</h3>
-          <span>{col.key === LATER ? col.sub : col.sub.split(' ').slice(1).join(' ')}</span>
+          <span>
+            {col.key === LATER ? col.sub : col.sub.split(' ').slice(1).join(' ')}
+            {sumMinutes(items) > 0 && ` · ${fmt(sumMinutes(items))}`}
+          </span>
         </div>
         {items.length > 0 && <span className="day__count">{items.length}</span>}
       </header>
@@ -63,15 +68,17 @@ function DayBox({ col, num, items, currentId, landed, today }: DayProps) {
 }
 
 export function PlanMode() {
-  const items = useStore((s) => s.items)
+  const all = useStore((s) => s.items)
   const deck = useStore((s) => s.decks.plan)
   const landed = useStore((s) => s.landed)
   const today = todayKey()
   const cols = useMemo(() => planColumns(today), [today])
 
-  const currentId = resolvePlanCursor(items, deck.cursor, today)
+  // Parents are labels for their subtasks, so only the subtasks are planned.
+  const items = useMemo(() => leaves(all), [all])
+  const currentId = resolvePlanCursor(all, deck.cursor, today)
   const current = items.find((i) => i.id === currentId) ?? null
-  const queue = useMemo(() => planQueue(items, today), [items, today])
+  const queue = useMemo(() => planQueue(all, today), [all, today])
   const plannable = useMemo(
     () => items.filter((i) => isPlannable(i) && !(i.done && !columnFor(i.slot, today))),
     [items, today],
@@ -106,6 +113,7 @@ export function PlanMode() {
             <>
               <QuadrantTag item={current} />
               <SlotTag item={current} today={today} />
+              <TimeTag item={current} />
               <DoneTag item={current} />
             </>
           )
@@ -117,6 +125,8 @@ export function PlanMode() {
             <Keys keys={['up', 'down']} size="xs" /> move
             <span className="card__sep">·</span>
             <Keys keys={['left', 'right']} size="xs" /> days
+            <span className="card__sep">·</span>
+            <Keys keys={['-', '=']} size="xs" /> time
           </>
         }
         empty={
@@ -160,7 +170,7 @@ export function PlanMode() {
             key={col.key}
             col={col}
             num={i + 1}
-            items={itemsInColumn(items, col.key, today)}
+            items={itemsInColumn(all, col.key, today)}
             currentId={currentId}
             landed={landed}
             today={today}

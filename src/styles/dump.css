@@ -367,3 +367,20 @@
 .dump-empty--static {
   cursor: default;
 }
+
+/* ------------------------------------------------------------------ time */
+
+.tag--time {
+  color: var(--text-2);
+}
+
+.clarity--time {
+  margin-top: 10px;
+  align-items: center;
+}
+
+.clarity--time .clarity__muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

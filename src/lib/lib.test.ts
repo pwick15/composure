@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { addDays, columnFor, LATER, planColumns, slotLabel } from './dates'
 import { matrixMarkdown, parseBackup, planICS, planMarkdown, thingsURL } from './export'
+import { fmt, stepMinutes } from './duration'
 import { fuzzyBest, fuzzyMatch } from './fuzzy'
-import { planGroups, planQueue, sortOrder } from './selectors'
+import { itemsInColumn, planGroups, planQueue, sortGroups, sortOrder, timeSummary, todayList } from './selectors'
 import { splitLines } from './text'
 import { isDone, leaves, progress, treeOrder } from './tree'
 import type { Item } from './types'
@@ -18,6 +19,7 @@ const item = (text: string, extra: Partial<Item> = {}): Item => ({
   slot: null,
   done: false,
   parentId: null,
+  minutes: null,
   ...extra,
 })
 
@@ -213,5 +215,84 @@ describe('subtasks', () => {
       ],
     })
     expect(parseBackup(json).map((i) => i.parentId)).toEqual([null, 'p', null, null, null])
+  })
+})
+
+describe('time estimates', () => {
+  it('formats minutes the way you would say them', () => {
+    expect([5, 45, 60, 90, 125, 240].map(fmt)).toEqual(['5m', '45m', '1h', '1h 30m', '2h 5m', '4h'])
+  })
+
+  it('steps through the ladder; below the shortest clears, above the longest stays', () => {
+    expect(stepMinutes(null, 1)).toBe(15)
+    expect(stepMinutes(null, -1)).toBe(5)
+    expect(stepMinutes(30, 1)).toBe(45)
+    expect(stepMinutes(30, -1)).toBe(25)
+    expect(stepMinutes(5, -1)).toBeNull()
+    expect(stepMinutes(240, 1)).toBe(240)
+    expect(stepMinutes(40, 1)).toBe(45) // off the ladder: snaps to the next rung
+  })
+
+  it('Sort lists each quadrant quickest first, with unknown lengths last', () => {
+    const items = [
+      item('long', { quadrant: 'do', minutes: 90 }),
+      item('unknown', { quadrant: 'do' }),
+      item('quick', { quadrant: 'do', minutes: 5 }),
+      item('other', { quadrant: 'schedule', minutes: 120 }),
+      item('queue b', { minutes: 60 }),
+      item('queue a', { minutes: 5 }),
+    ]
+    const [queue, doList, schedule] = sortGroups(items)
+    expect(doList.map((i) => i.text)).toEqual(['quick', 'long', 'unknown'])
+    expect(schedule.map((i) => i.text)).toEqual(['other'])
+    // The unsorted queue stays in Dump order: it is a to-decide list, not a to-do list.
+    expect(queue.map((i) => i.text)).toEqual(['queue b', 'queue a'])
+  })
+
+  it('a day lists the urgent quadrant first, then quickest to longest inside each', () => {
+    const items = [
+      item('schedule 10', { quadrant: 'schedule', slot: TODAY, minutes: 10 }),
+      item('do 60', { quadrant: 'do', slot: TODAY, minutes: 60 }),
+      item('do 15', { quadrant: 'do', slot: TODAY, minutes: 15 }),
+      item('do ?', { quadrant: 'do', slot: TODAY }),
+    ]
+    expect(itemsInColumn(items, TODAY, TODAY).map((i) => i.text)).toEqual(['do 15', 'do 60', 'do ?', 'schedule 10'])
+    expect(todayList(items, TODAY).map((i) => i.text)).toEqual(['do 15', 'do 60', 'do ?', 'schedule 10'])
+  })
+
+  it('totals what today holds, and how many open tasks still need a time', () => {
+    const items = [
+      item('a', { quadrant: 'do', slot: TODAY, minutes: 30, done: true }),
+      item('b', { quadrant: 'do', slot: TODAY, minutes: 45 }),
+      item('c', { quadrant: 'do', slot: TODAY }),
+      item('tomorrow', { quadrant: 'do', slot: addDays(TODAY, 1), minutes: 600 }),
+    ]
+    expect(timeSummary(items, TODAY)).toEqual({ planned: 75, done: 30, left: 45, unestimated: 1 })
+  })
+
+  it('exports carry the estimate and the day total', () => {
+    const items = [
+      item('call dentist', { quadrant: 'do', slot: TODAY, minutes: 10 }),
+      item('write report', { quadrant: 'do', slot: TODAY, minutes: 90 }),
+    ]
+    const md = planMarkdown(items, TODAY)
+    expect(md).toContain('· 1h 40m')
+    expect(md).toContain('- [ ] call dentist (10m)')
+    expect(planICS(items, TODAY)).toContain('DESCRIPTION:Estimate: 10m')
+  })
+
+  it('backups keep sensible estimates and drop the rest', () => {
+    const json = JSON.stringify({
+      app: 'composure',
+      version: 3,
+      items: [
+        { id: 'a', text: 'a', minutes: 30 },
+        { id: 'b', text: 'b', minutes: -5 },
+        { id: 'c', text: 'c', minutes: 'soon' },
+        { id: 'd', text: 'd', minutes: 99999 },
+        { id: 'e', text: 'e' },
+      ],
+    })
+    expect(parseBackup(json).map((i) => i.minutes)).toEqual([30, null, null, null, null])
   })
 })

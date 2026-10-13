@@ -1,10 +1,11 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Kbd } from '../components/Kbd'
-import { ParentRef, QuadrantTag, SlotTag } from '../components/Tags'
+import { ParentRef, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
 import { isOverdue, longDate, todayKey } from '../lib/dates'
+import { DEFAULT_FOCUS, fmt } from '../lib/duration'
 import { EXIT_FAST, keepFocus, SPRING } from '../lib/motion'
-import { clarity, resolveTodayCursor, todayList } from '../lib/selectors'
+import { clarity, resolveTodayCursor, timeSummary, todayList } from '../lib/selectors'
 import { setMode, todayFocus } from '../state/actions'
 import { useStore } from '../state/store'
 
@@ -29,6 +30,47 @@ export function ClarityLine({ items }: { items: Parameters<typeof clarity>[0] })
   )
 }
 
+/** "3h 20m planned · 45m done · 2h 35m left · done by 6:10 pm": what today adds up to. */
+function TimeSummary({ items, today }: { items: Parameters<typeof clarity>[0]; today: string }) {
+  const t = timeSummary(items, today)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+  if (!t.planned && !t.unestimated) return null
+  const finish = new Date(now + t.left * 60_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return (
+    <p className="clarity clarity--time">
+      {t.planned > 0 && (
+        <span>
+          <b>{fmt(t.planned)}</b> planned
+        </span>
+      )}
+      {t.done > 0 && (
+        <span>
+          <b>{fmt(t.done)}</b> done
+        </span>
+      )}
+      {t.left > 0 && (
+        <>
+          <span>
+            <b>{fmt(t.left)}</b> left
+          </span>
+          <span>
+            if you start now, done by <b>{finish}</b>
+          </span>
+        </>
+      )}
+      {t.unestimated > 0 && (
+        <span className="clarity__muted">
+          {t.unestimated} without a time <Kbd k="=" size="xs" />
+        </span>
+      )}
+    </p>
+  )
+}
+
 export function TodayMode() {
   const items = useStore((s) => s.items)
   const cursor = useStore((s) => s.todayCursor)
@@ -39,6 +81,7 @@ export function TodayMode() {
   const currentId = resolveTodayCursor(items, cursor, today)
   const done = list.filter((i) => i.done).length
   const allDone = list.length > 0 && done === list.length
+  const current = list.find((i) => i.id === currentId)
 
   useEffect(() => {
     document.querySelector('.today-row[data-selected]')?.scrollIntoView({ block: 'nearest' })
@@ -63,6 +106,7 @@ export function TodayMode() {
             </span>
           </div>
         )}
+        {list.length > 0 && <TimeSummary items={items} today={today} />}
 
         {list.length === 0 ? (
           <div className="dump-empty dump-empty--static">
@@ -112,6 +156,7 @@ export function TodayMode() {
                     </span>
                     <span className="row__meta">
                       {focused && <span className="tag tag--focus">focus</span>}
+                      <TimeTag item={item} />
                       {isOverdue(item.slot, today) && <SlotTag item={item} today={today} />}
                       {item.quadrant && <QuadrantTag item={item} />}
                     </span>
@@ -131,11 +176,11 @@ export function TodayMode() {
               <Kbd k="t" size="xs" /> not today
             </span>
             <span>
-              <Kbd k="f" size="xs" /> focus 25 min
+              <Kbd k="f" size="xs" /> focus {fmt(current?.minutes ?? DEFAULT_FOCUS)}
             </span>
             <span>
-              <Kbd k="shift+up" size="xs" />
-              <Kbd k="shift+down" size="xs" /> reorder
+              <Kbd k="-" size="xs" />
+              <Kbd k="=" size="xs" /> change time
             </span>
           </p>
         )}

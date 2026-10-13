@@ -2,12 +2,14 @@ import { AnimatePresence } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { Chip } from '../components/Chip'
 import { Kbd, Keys } from '../components/Kbd'
-import { DoneTag, QuadrantTag, SlotTag } from '../components/Tags'
+import { DoneTag, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
 import { Tray, type Receipt } from '../components/Tray'
 import { todayKey } from '../lib/dates'
+import { fmt, sumMinutes } from '../lib/duration'
 import { keepFocus } from '../lib/motion'
 import { QUADRANTS, QUADRANT_BY_ID, type QuadrantMeta } from '../lib/quadrants'
-import { resolveSortCursor } from '../lib/selectors'
+import { resolveSortCursor, sortGroups } from '../lib/selectors'
+import { leaves } from '../lib/tree'
 import type { Item } from '../lib/types'
 import { deckFile, deckFocus, setMode } from '../state/actions'
 import { useStore } from '../state/store'
@@ -41,6 +43,7 @@ function QuadrantBox({ meta, items, currentId, landed }: QuadrantProps) {
           <h3>{meta.title}</h3>
           <span>{meta.blurb}</span>
         </div>
+        {items.length > 0 && sumMinutes(items) > 0 && <span className="quad__time">{fmt(sumMinutes(items))}</span>}
         {items.length > 0 && <span className="quad__count">{items.length}</span>}
       </header>
       <div className="quad__body">
@@ -62,12 +65,14 @@ function QuadrantBox({ meta, items, currentId, landed }: QuadrantProps) {
 }
 
 export function SortMode() {
-  const items = useStore((s) => s.items)
+  const all = useStore((s) => s.items)
   const deck = useStore((s) => s.decks.sort)
   const landed = useStore((s) => s.landed)
   const today = todayKey()
 
-  const currentId = resolveSortCursor(items, deck.cursor)
+  // Parents are labels for their subtasks, so only the subtasks are sorted.
+  const items = useMemo(() => leaves(all), [all])
+  const currentId = resolveSortCursor(all, deck.cursor)
   const current = items.find((i) => i.id === currentId) ?? null
   const unsorted = useMemo(() => items.filter((i) => !i.quadrant), [items])
   const ahead = unsorted.filter((i) => i.id !== currentId).length
@@ -82,9 +87,10 @@ export function SortMode() {
       }
     : null
 
+  // Each quadrant lists its thoughts quickest first.
   const byQuadrant = useMemo(
-    () => Object.fromEntries(QUADRANTS.map((q) => [q.id, items.filter((i) => i.quadrant === q.id)])) as Record<string, Item[]>,
-    [items],
+    () => Object.fromEntries(sortGroups(all).slice(1).map((list, i) => [QUADRANTS[i].id, list])) as Record<string, Item[]>,
+    [all],
   )
 
   useEffect(() => {
@@ -105,6 +111,7 @@ export function SortMode() {
             <>
               <QuadrantTag item={current} />
               <SlotTag item={current} today={today} />
+              <TimeTag item={current} nudge />
               <DoneTag item={current} />
             </>
           )
@@ -113,6 +120,8 @@ export function SortMode() {
           <>
             <Keys keys={['q', 'w', 'a', 's']} size="xs" /> to file
             <span className="card__sep">·</span>
+            <Kbd label="1–6" size="xs" /> time
+            <span className="card__sep">·</span>
             <Keys keys={['up', 'down']} size="xs" /> move
           </>
         }
@@ -120,7 +129,7 @@ export function SortMode() {
           items.length ? (
             <div className="tray-empty">
               <strong>Everything's sorted.</strong>
-              <ClarityLine items={items} />
+              <ClarityLine items={all} />
               <span>
                 Now give the important ones a day.{' '}
                 <button className="cta cta--inline" onMouseDown={keepFocus} onClick={() => setMode('plan')}>

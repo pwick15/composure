@@ -1,8 +1,8 @@
 import { addDays, columnFor, planColumns, todayKey } from '../lib/dates'
+import { DEFAULT_FOCUS, fmt, PRESETS, stepMinutes } from '../lib/duration'
 import { uid } from '../lib/id'
 import { QUADRANTS, QUADRANT_BY_ID } from '../lib/quadrants'
 import {
-  itemsInColumn,
   nextInQueue,
   planGroups,
   resolvePlanCursor,
@@ -59,7 +59,7 @@ function changedId(a: Item[], b: Item[]): string | null {
   const byId = new Map(b.map((i) => [i.id, i]))
   for (const i of a) {
     const j = byId.get(i.id)
-    if (!j || j.quadrant !== i.quadrant || j.slot !== i.slot || j.text !== i.text || j.done !== i.done || j.parentId !== i.parentId) return i.id
+    if (!j || j.quadrant !== i.quadrant || j.slot !== i.slot || j.text !== i.text || j.done !== i.done || j.parentId !== i.parentId || j.minutes !== i.minutes) return i.id
   }
   return b.find((j) => !a.some((i) => i.id === j.id))?.id ?? null
 }
@@ -106,6 +106,7 @@ export function makeItem(text: string, parent?: Item): Item {
     slot: parent?.slot ?? null,
     done: false,
     parentId: parent?.id ?? null,
+    minutes: null,
   }
 }
 
@@ -708,23 +709,6 @@ export function planShift(dir: -1 | 1) {
   landHere('plan', cur.id, next !== null)
 }
 
-/** Shift+↑/↓ in Plan: reorder the selected thought within its day. */
-export function planReorder(dir: -1 | 1) {
-  const cur = planCurrent()
-  if (!cur) return nothingHere('plan')
-  const today = todayKey()
-  const col = columnFor(cur.slot, today)
-  if (col === null) return
-  const list = itemsInColumn(get().items, col, today)
-  const other = list[list.findIndex((i) => i.id === cur.id) + dir]
-  if (!other) return
-  const items = [...get().items]
-  const a = items.findIndex((i) => i.id === cur.id)
-  const b = items.findIndex((i) => i.id === other.id)
-  ;[items[a], items[b]] = [items[b], items[a]]
-  commit(items)
-}
-
 export function deckFocus(m: DeckMode, id: string) {
   wander(m, id, { x: 0, y: -1 })
 }
@@ -756,6 +740,37 @@ export function trayDelete() {
   if (!cur) return
   removeItem(cur.id)
   toast(`Deleted "${truncate(cur.text)}"`, 'mod+z')
+}
+
+// ---------------------------------------------------------------- time estimates
+
+/** The thought the selected screen is showing: the tray card in Sort and Plan, the highlighted row in Today. */
+function estimateTarget(): Item | null {
+  const { mode } = get()
+  if (mode === 'sort') return sortCurrent()
+  if (mode === 'plan') return planCurrent()
+  if (mode === 'today') return todayCurrent()
+  return null
+}
+
+function noTarget() {
+  toast(get().mode === 'dump' ? 'Estimates are set in Sort, Plan and Today' : 'Nothing selected')
+}
+
+/** 1–6 in Sort: set how long it takes. The card stays put; filing it is a separate key. */
+export function estimateSet(minutes: number | null) {
+  const cur = estimateTarget()
+  if (!cur) return noTarget()
+  patch(cur.id, { minutes })
+}
+
+export const estimatePreset = (n: number) => estimateSet(PRESETS[n - 1] ?? null)
+
+/** = / -: a step longer or shorter. */
+export function estimateStep(dir: 1 | -1) {
+  const cur = estimateTarget()
+  if (!cur) return noTarget()
+  patch(cur.id, { minutes: stepMinutes(cur.minutes, dir) })
 }
 
 // ---------------------------------------------------------------- today
@@ -804,35 +819,21 @@ export function todayDefer() {
   toast(`"${truncate(cur.text, 24)}" moved to tomorrow`, 'mod+z')
 }
 
-export function todayReorder(dir: -1 | 1) {
-  const cur = todayCurrent()
-  if (!cur) return nothingToday()
-  const list = todayList(get().items, todayKey())
-  const other = list[list.findIndex((it) => it.id === cur.id) + dir]
-  if (!other) return
-  const items = [...get().items]
-  const a = items.findIndex((it) => it.id === cur.id)
-  const b = items.findIndex((it) => it.id === other.id)
-  ;[items[a], items[b]] = [items[b], items[a]]
-  commit(items)
-}
-
 export function todayFocus(id: string) {
   set({ todayCursor: id })
 }
 
 // ---------------------------------------------------------------- focus timer
 
-const FOCUS_MINUTES = 25
-
-/** F: start a focus block on the selected thought, or stop the one running on it. */
+/** F: start a focus block as long as the thought's estimate, or stop the one running on it. */
 export function focusToggle() {
   const cur = todayCurrent()
   if (!cur) return nothingToday()
   const { focus } = get()
   if (focus?.id === cur.id) return focusStop()
-  set({ focus: { id: cur.id, endsAt: Date.now() + FOCUS_MINUTES * 60_000, minutes: FOCUS_MINUTES } })
-  toast(`${FOCUS_MINUTES} minutes on "${truncate(cur.text, 24)}"`, 'f')
+  const minutes = cur.minutes ?? DEFAULT_FOCUS
+  set({ focus: { id: cur.id, endsAt: Date.now() + minutes * 60_000, minutes } })
+  toast(`${fmt(minutes)} on "${truncate(cur.text, 24)}"`, 'f')
 }
 
 export function focusStop() {

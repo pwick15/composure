@@ -50,8 +50,8 @@ function hintsFor(s: State): Hint[] {
       h(['up', 'down'], 'move'),
       h('x', 'done'),
       h('t', 'not today'),
-      h('f', s.focus ? 'focus on/off' : 'focus 25 min'),
-      h(['shift+up', 'shift+down'], 'reorder'),
+      h('f', s.focus ? 'focus on/off' : 'focus'),
+      h(['-', '='], 'time'),
       h('alt+left', 'plan'),
     ]
 
@@ -62,6 +62,7 @@ function hintsFor(s: State): Hint[] {
       return [h('shift+3', 'plan'), h('backspace', 'back'), h(['up', 'down'], 'revisit'), h('mod+k', 'search')]
     return [
       h(['q', 'w', 'a', 's'], 'file'),
+      h('1–6', 'time', true),
       h(['up', 'down'], 'move'),
       h(['left', 'right'], 'quadrant'),
       h('⇧ + arrows', 'move it', true),
@@ -77,6 +78,7 @@ function hintsFor(s: State): Hint[] {
     h('1–7', 'day', true),
     h('8', 'later'),
     h('0', 'unplan'),
+    h(['-', '='], 'time'),
     h(['up', 'down'], 'move'),
     h(['left', 'right'], 'days'),
     h('⇧ + arrows', 'move it', true),

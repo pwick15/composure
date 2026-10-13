@@ -1,4 +1,5 @@
 import { addDays, columnFor, isDateSlot, LATER, longDate, planColumns } from './dates'
+import { cleanMinutes, fmt, sumMinutes } from './duration'
 import { QUADRANTS, QUADRANT_BY_ID } from './quadrants'
 import { isPlannable, planQueue } from './selectors'
 import { leaves, parentOf } from './tree'
@@ -12,7 +13,9 @@ const partOf = (all: Item[], i: Item) => {
   return parent ? ` · ${parent.text}` : ''
 }
 
-const boxer = (all: Item[]) => (i: Item) => `- [${i.done ? 'x' : ' '}] ${i.text}${partOf(all, i)}`
+const estimate = (i: Item) => (i.minutes ? ` (${fmt(i.minutes)})` : '')
+
+const boxer = (all: Item[]) => (i: Item) => `- [${i.done ? 'x' : ' '}] ${i.text}${estimate(i)}${partOf(all, i)}`
 
 export function planMarkdown(all: Item[], today: string): string {
   const items = leaves(all)
@@ -23,7 +26,8 @@ export function planMarkdown(all: Item[], today: string): string {
     if (!list.length) continue
     const heading =
       col.key === LATER ? 'Later' : col.label === col.sub.slice(0, 3) ? col.sub : `${col.label} · ${col.sub}`
-    out.push('', `## ${heading}`, ...list.map(box))
+    const total = sumMinutes(list)
+    out.push('', `## ${heading}${total ? ` · ${fmt(total)}` : ''}`, ...list.map(box))
   }
   const rest = planQueue(all, today)
   if (rest.length) {
@@ -100,7 +104,8 @@ export function planICS(all: Item[], today: string, now = new Date()): string | 
       `SUMMARY:${icsEscape(item.text)}`,
     )
     const parent = parentOf(all, item)
-    if (parent) lines.push(`DESCRIPTION:${icsEscape(`Part of: ${parent.text}`)}`)
+    const notes = [parent && `Part of: ${parent.text}`, item.minutes && `Estimate: ${fmt(item.minutes)}`].filter(Boolean)
+    if (notes.length) lines.push(`DESCRIPTION:${icsEscape(notes.join('\n'))}`)
     if (item.quadrant) lines.push(`CATEGORIES:${icsEscape(QUADRANT_BY_ID[item.quadrant].title)}`)
     lines.push('TRANSP:TRANSPARENT', 'END:VEVENT')
   }
@@ -123,6 +128,7 @@ export function thingsURL(all: Item[], today: string): string | null {
           'From Composure',
           i.quadrant && QUADRANT_BY_ID[i.quadrant].title,
           parentOf(all, i) && `Part of: ${parentOf(all, i)!.text}`,
+          i.minutes && `Estimate: ${fmt(i.minutes)}`,
         ]
           .filter(Boolean)
           .join(' · '),
@@ -162,6 +168,7 @@ export function parseBackup(json: string): Item[] {
       quadrant: r.quadrant && QUADRANT_IDS.has(r.quadrant) ? r.quadrant : null,
       slot: typeof r.slot === 'string' ? r.slot : null,
       done: Boolean(r.done),
+      minutes: cleanMinutes(r.minutes),
       parentId: typeof r.parentId === 'string' && r.parentId !== r.id && ids.has(r.parentId) ? r.parentId : null,
     }
   })

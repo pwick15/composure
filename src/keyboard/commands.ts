@@ -1,4 +1,5 @@
 import { planColumns, todayKey } from '../lib/dates'
+import { fmt, PRESETS } from '../lib/duration'
 import { QUADRANTS } from '../lib/quadrants'
 import type { Mode } from '../lib/types'
 import * as a from '../state/actions'
@@ -247,6 +248,19 @@ export const COMMANDS: Command[] = [
       run: () => a.deckFile('sort', q.id),
     }),
   ),
+  ...PRESETS.map(
+    (m, i): Command => ({
+      id: `sort.time${i + 1}`,
+      title: `Takes ${fmt(m)}`,
+      hud: `~${fmt(m)}`,
+      group: 'Sort',
+      scope: 'sort',
+      keys: [String(i + 1)],
+      sheet: false,
+      keywords: 'time estimate duration minutes how long',
+      run: () => a.estimatePreset(i + 1),
+    }),
+  ),
   {
     id: 'sort.clear',
     title: 'Back to unsorted',
@@ -372,6 +386,16 @@ export const COMMANDS: Command[] = [
     ]
   }),
 
+  // ------------------------------------------------------------ how long it takes
+  ...(['sort', 'plan', 'today'] as const).flatMap((m): Command[] => {
+    const group = m === 'sort' ? 'Sort' : m === 'plan' ? 'Plan' : 'Today'
+    const keywords = 'time estimate duration minutes how long'
+    return [
+      { id: `${m}.longer`, title: 'Takes longer', hud: 'Longer', group, scope: m, keys: ['=', 'plus'], repeat: true, keywords, run: () => a.estimateStep(1) },
+      { id: `${m}.shorter`, title: 'Takes less time', hud: 'Shorter', group, scope: m, keys: ['-'], repeat: true, keywords, run: () => a.estimateStep(-1) },
+    ]
+  }),
+
   // ------------------------------------------------------------ shift+arrows: move the thought itself
   ...(
     [
@@ -418,30 +442,6 @@ export const COMMANDS: Command[] = [
     sheet: false,
     run: () => a.planShift(1),
   },
-  {
-    id: 'plan.shift.up',
-    title: 'Move up within the day',
-    hud: 'Move up',
-    group: 'Plan',
-    scope: 'plan',
-    keys: ['shift+up'],
-    repeat: true,
-    palette: false,
-    sheet: false,
-    run: () => a.planReorder(-1),
-  },
-  {
-    id: 'plan.shift.down',
-    title: 'Move down within the day',
-    hud: 'Move down',
-    group: 'Plan',
-    scope: 'plan',
-    keys: ['shift+down'],
-    repeat: true,
-    palette: false,
-    sheet: false,
-    run: () => a.planReorder(1),
-  },
 
   // ------------------------------------------------------------ today
   {
@@ -465,7 +465,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'today.focus',
-    title: 'Focus 25 minutes on this',
+    title: 'Focus on this for as long as you estimated',
     hud: 'Focus',
     group: 'Today',
     scope: 'today',
@@ -494,28 +494,6 @@ export const COMMANDS: Command[] = [
     repeat: true,
     palette: false,
     run: () => a.todayMove(-1),
-  },
-  {
-    id: 'today.moveDown',
-    title: 'Move down',
-    hud: 'Move down',
-    group: 'Today',
-    scope: 'today',
-    keys: ['shift+down'],
-    repeat: true,
-    palette: false,
-    run: () => a.todayReorder(1),
-  },
-  {
-    id: 'today.moveUp',
-    title: 'Move up',
-    hud: 'Move up',
-    group: 'Today',
-    scope: 'today',
-    keys: ['shift+up'],
-    repeat: true,
-    palette: false,
-    run: () => a.todayReorder(-1),
   },
   {
     id: 'focus.stop',
@@ -601,7 +579,8 @@ export const SHEET_HINTS: SheetHint[] = [
   { group: 'Sort', title: 'Move the thought between quadrants', keys: ['shift+up', 'shift+down', 'shift+left', 'shift+right'] },
   { group: 'Plan', title: 'Plan for today … +6 days', keys: ['1–7'], literal: true },
   { group: 'Plan', title: 'Move a day earlier / later', keys: ['shift+left', 'shift+right'] },
-  { group: 'Plan', title: 'Reorder within the day', keys: ['shift+up', 'shift+down'] },
+  { group: 'Sort', title: 'How long it takes: 5m 15m 30m 1h 2h 4h', keys: ['1–6'], literal: true },
+  { group: 'Sort', title: 'Longer / shorter estimate (also in Plan, Today)', keys: ['=', '-'] },
 ]
 
 const parsed = new Map(COMMANDS.map((c) => [c.id, (c.keys ?? []).map(parseCombo)]))

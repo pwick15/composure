@@ -359,6 +359,16 @@
   margin-right: 6px;
 }
 
+.quad__time {
+  margin-left: auto;
+  font: 11px/1 var(--font-mono);
+  color: var(--text-3);
+}
+
+.quad__time + .quad__count {
+  margin-left: 0;
+}
+
 .quad__count,
 .day__count {
   margin-left: auto;
