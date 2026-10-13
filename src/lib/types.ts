@@ -16,6 +16,8 @@ export interface Item {
   parentId: string | null
   /** How long it should take, in minutes. Null until you say. */
   minutes: number | null
+  /** Which work session of the day it belongs to (1 = the first). Only matters while it's in Today. */
+  session: number
 }
 
 export type Theme = 'system' | 'dark' | 'light'

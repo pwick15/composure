@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, todayKey } from '../lib/dates'
 import { makeBackup } from '../lib/export'
-import { todayList } from '../lib/selectors'
+import { todayList, todaySessions } from '../lib/selectors'
 import { parentOf, treeOrder } from '../lib/tree'
 import * as a from './actions'
 import { importFile } from './exporters'
@@ -239,17 +239,6 @@ describe('today', () => {
     expect(a.todayCurrent()?.text).toBe('b')
     a.undo()
     expect(getState().items.find((i) => i.text === 'a')!.slot).toBe(todayKey())
-  })
-
-  it('F starts a focus block, F again stops it, finishing a task ends it', () => {
-    plannedToday('a')
-    a.focusToggle()
-    expect(getState().focus?.id).toBe(getState().items[0].id)
-    a.focusToggle()
-    expect(getState().focus).toBeNull()
-    a.focusToggle()
-    a.todayToggle()
-    expect(getState().focus).toBeNull()
   })
 
   it('⌥→ steps through screens and stops at the ends', () => {
@@ -513,17 +502,6 @@ describe('time estimates', () => {
     expect(getState().toasts.at(-1)?.text).toMatch(/Sort, Plan and Today/)
   })
 
-  it('F focuses for as long as the task was estimated, 25 minutes when it was not', () => {
-    plannedToday('a', 'b')
-    setState({ items: getState().items.map((i) => (i.text === 'a' ? { ...i, minutes: 90 } : i)) })
-    a.focusToggle()
-    expect(getState().focus).toMatchObject({ minutes: 90 })
-    a.focusStop()
-    a.todayMove(1)
-    a.focusToggle()
-    expect(getState().focus).toMatchObject({ minutes: 25 })
-  })
-
   it('Today lists quickest first inside a quadrant, and re-sorts when an estimate changes', () => {
     plannedToday('slow', 'quick')
     setState({
@@ -742,5 +720,186 @@ describe('add on Today', () => {
     a.todayAddArrow('down')
     a.todayAddArrow('down')
     expect(getState().todayAdd?.cursor).toEqual({ row: 1, col: 3 })
+  })
+})
+
+// ---------------------------------------------------------------- work sessions
+
+describe('work sessions', () => {
+  const T0 = new Date('2026-10-13T09:00:00').getTime()
+  const MIN = 60_000
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(T0)
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const passMinutes = (n: number) => {
+    vi.setSystemTime(Date.now() + n * MIN)
+    a.sessionSync()
+  }
+
+  /** Tasks for today, all in the Do quadrant: [text, minutes, session]. */
+  function day(...tasks: [string, number | null, number?][]) {
+    dump(...tasks.map(([t]) => t))
+    setState({
+      items: getState().items.map((i) => {
+        const [, minutes, session = 1] = tasks.find(([t]) => t === i.text)!
+        return { ...i, quadrant: 'do' as const, slot: todayKey(), minutes, session }
+      }),
+    })
+    a.setMode('today')
+  }
+  const activeText = () => {
+    const { run, items } = getState()
+    return items.find((i) => i.id === run?.queue[run.index])?.text
+  }
+  const done = (t: string) => getState().items.find((i) => i.text === t)!.done
+
+  it('F starts the selected task\'s session with its open tasks, quickest first, and highlights the first', () => {
+    day(['long', 60], ['quick', 5], ['other session', 30, 2])
+    a.sessionToggle()
+    const { run } = getState()
+    expect(run).toMatchObject({ session: 1, index: 0, phase: 'running' })
+    expect(run!.queue.map((id) => getState().items.find((i) => i.id === id)!.text)).toEqual(['quick', 'long'])
+    expect(a.todayCurrent()?.text).toBe('quick')
+  })
+
+  it('moves on to the next task when a window runs out, without ticking anything off', () => {
+    day(['a', 10], ['b', 20])
+    a.sessionStart()
+    passMinutes(9)
+    expect(activeText()).toBe('a')
+    passMinutes(2)
+    expect(activeText()).toBe('b')
+    expect(a.todayCurrent()?.text).toBe('b') // the highlight follows
+    expect(done('a')).toBe(false)
+    expect(getState().toasts.at(-1)?.text).toMatch(/Time's up on "a"/)
+  })
+
+  it('ticking the active task off early starts the next window straight away', () => {
+    day(['a', 20], ['b', 30])
+    a.sessionStart()
+    passMinutes(5)
+    a.todayToggle()
+    expect(activeText()).toBe('b')
+    expect(getState().run!.startedAt).toBe(Date.now())
+    passMinutes(29)
+    expect(activeText()).toBe('b') // b has its full 30 minutes from when it began
+    passMinutes(2)
+    expect(getState().run!.phase).toBe('over')
+  })
+
+  it('catches up after the tab slept through several windows', () => {
+    day(['a', 10], ['b', 10], ['c', 10])
+    a.sessionStart()
+    passMinutes(25)
+    expect(activeText()).toBe('c')
+    expect(getState().run!.startedAt).toBe(T0 + 20 * MIN)
+  })
+
+  it('when time is up the unfinished tasks wait for you; more time and ↵ carry on', () => {
+    day(['a', 10], ['b', 10])
+    a.sessionStart()
+    a.todayToggle() // a is done early; b begins now
+    expect(activeText()).toBe('b')
+    passMinutes(12)
+    expect(getState().run).toMatchObject({ phase: 'over' })
+    expect(getState().items.filter((i) => !i.done).map((i) => i.text)).toEqual(['b'])
+    expect(a.todayCurrent()?.text).toBe('b')
+
+    a.estimateStep(1) // 10m → 15m: it needs a bit longer
+    expect(getState().items.find((i) => i.text === 'b')!.minutes).toBe(15)
+    a.sessionStart() // ↵ in the "over" state carries on
+    expect(getState().run).toMatchObject({ phase: 'running', index: 0, startedAt: Date.now() })
+    expect(activeText()).toBe('b')
+    passMinutes(14)
+    expect(activeText()).toBe('b')
+    a.todayToggle()
+    expect(getState().run).toBeNull()
+    expect(getState().toasts.at(-1)?.text).toMatch(/done/i)
+  })
+
+  it('ticking off everything left after time is up finishes the session', () => {
+    day(['a', 5])
+    a.sessionStart()
+    passMinutes(6)
+    expect(getState().run).toMatchObject({ phase: 'over' })
+    a.todayToggle()
+    expect(getState().run).toBeNull()
+  })
+
+  it('more time on the active task pushes its window out', () => {
+    day(['a', 25], ['b', 30])
+    a.sessionStart()
+    passMinutes(24)
+    a.estimateStep(1) // 25m → 30m
+    passMinutes(4)
+    expect(activeText()).toBe('a')
+    passMinutes(2)
+    expect(activeText()).toBe('b')
+  })
+
+  it('a task with no estimate gets a 25 minute window', () => {
+    day(['quick', 5], ['unknown', null]) // unknown ones come last
+    a.sessionStart()
+    passMinutes(6)
+    expect(activeText()).toBe('unknown')
+    passMinutes(23)
+    expect(activeText()).toBe('unknown')
+    passMinutes(2)
+    expect(getState().run!.phase).toBe('over')
+  })
+
+  it('a task moved to tomorrow drops out of the running session', () => {
+    day(['a', 10], ['b', 10])
+    a.sessionStart()
+    a.todayDefer()
+    expect(activeText()).toBe('b')
+  })
+
+  it('F stops it, and ↵ never does', () => {
+    day(['a', 10])
+    a.sessionStart()
+    a.sessionStart()
+    expect(getState().run).not.toBeNull()
+    a.sessionToggle()
+    expect(getState().run).toBeNull()
+  })
+
+  it('⇧→ splits a task into the next session, ⇧← brings it back, and empty sessions vanish', () => {
+    day(['a', 10], ['b', 20])
+    const sessions = () => todaySessions(getState().items, todayKey()).map((g) => g.items.map((i) => i.text))
+    expect(a.todayCurrent()?.text).toBe('a')
+    a.todayMoveSession(1)
+    expect(sessions()).toEqual([['b'], ['a']])
+    expect(a.todayCurrent()?.text).toBe('a') // the selection stays with the task you moved
+    a.todayMoveSession(1) // alone in the last session: nowhere further to go
+    expect(sessions()).toEqual([['b'], ['a']])
+    a.todayMoveSession(-1)
+    expect(sessions()).toEqual([['a', 'b']])
+  })
+
+  it('a session starts only the tasks in the selected task\'s session', () => {
+    day(['morning', 10, 1], ['afternoon', 20, 2])
+    a.todayFocus(getState().items.find((i) => i.text === 'afternoon')!.id)
+    a.sessionStart()
+    expect(getState().run!.queue).toHaveLength(1)
+    expect(activeText()).toBe('afternoon')
+  })
+
+  it('a task planned for another day goes back to the first session', () => {
+    day(['a', 10, 3])
+    a.todayDefer()
+    expect(getState().items[0].session).toBe(1)
+  })
+
+  it('tasks added on Today join the session you are on', () => {
+    day(['a', 10, 2], ['b', 10, 1])
+    a.todayFocus(getState().items.find((i) => i.text === 'a')!.id)
+    a.todayAddOpen()
+    a.todayAddEnter('new one')
+    expect(getState().items.find((i) => i.text === 'new one')!.session).toBe(2)
   })
 })

@@ -2,6 +2,7 @@ import { motion, MotionConfig } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { CommandPalette } from './components/CommandPalette'
 import { KeystrokeHUD } from './components/KeystrokeHUD'
+import { SessionDriver } from './components/SessionDriver'
 import { ShortcutSheet } from './components/ShortcutSheet'
 import { StatusBar } from './components/StatusBar'
 import { Toasts } from './components/Toasts'
@@ -53,6 +54,7 @@ export default function App() {
         </main>
         <StatusBar />
         <KeystrokeHUD />
+        <SessionDriver />
         <Toasts />
         <CommandPalette />
         <ShortcutSheet />

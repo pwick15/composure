@@ -169,6 +169,7 @@ export function parseBackup(json: string): Item[] {
       slot: typeof r.slot === 'string' ? r.slot : null,
       done: Boolean(r.done),
       minutes: cleanMinutes(r.minutes),
+      session: typeof r.session === 'number' && Number.isInteger(r.session) && r.session >= 1 ? r.session : 1,
       parentId: typeof r.parentId === 'string' && r.parentId !== r.id && ids.has(r.parentId) ? r.parentId : null,
     }
   })

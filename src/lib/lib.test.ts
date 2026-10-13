@@ -3,7 +3,7 @@ import { addDays, columnFor, LATER, planColumns, slotLabel } from './dates'
 import { matrixMarkdown, parseBackup, planICS, planMarkdown, thingsURL } from './export'
 import { fmt, stepMinutes } from './duration'
 import { fuzzyBest, fuzzyMatch } from './fuzzy'
-import { itemsInColumn, planGroups, planQueue, sortGroups, sortOrder, timeSummary, todayList } from './selectors'
+import { itemsInColumn, planGroups, planQueue, sortGroups, sortOrder, timeLeft, todayList } from './selectors'
 import { splitLines } from './text'
 import { isDone, leaves, progress, treeOrder } from './tree'
 import type { Item } from './types'
@@ -20,6 +20,7 @@ const item = (text: string, extra: Partial<Item> = {}): Item => ({
   done: false,
   parentId: null,
   minutes: null,
+  session: 1,
   ...extra,
 })
 
@@ -260,14 +261,14 @@ describe('time estimates', () => {
     expect(todayList(items, TODAY).map((i) => i.text)).toEqual(['do 15', 'do 60', 'do ?', 'schedule 10'])
   })
 
-  it('totals what today holds, and how many open tasks still need a time', () => {
+  it('totals the time left today; a task with no estimate counts as a default-length one', () => {
     const items = [
       item('a', { quadrant: 'do', slot: TODAY, minutes: 30, done: true }),
       item('b', { quadrant: 'do', slot: TODAY, minutes: 45 }),
       item('c', { quadrant: 'do', slot: TODAY }),
       item('tomorrow', { quadrant: 'do', slot: addDays(TODAY, 1), minutes: 600 }),
     ]
-    expect(timeSummary(items, TODAY)).toEqual({ planned: 75, done: 30, left: 45, unestimated: 1 })
+    expect(timeLeft(items, TODAY)).toEqual({ minutes: 70, unestimated: 1, open: 2 })
   })
 
   it('exports carry the estimate and the day total', () => {

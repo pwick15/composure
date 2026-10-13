@@ -6,7 +6,7 @@ export const LADDER = [5, 10, 15, 25, 30, 45, 60, 90, 120, 180, 240]
 /** What 1–6 set in Sort: one key per common size. */
 export const PRESETS = [5, 15, 30, 60, 120, 240]
 
-/** A focus block for a thought with no estimate. */
+/** What a work session assumes for a thought with no estimate. */
 export const DEFAULT_FOCUS = 25
 
 /** 45 → "45m", 60 → "1h", 90 → "1h 30m". */

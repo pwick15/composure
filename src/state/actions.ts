@@ -1,16 +1,20 @@
 import { addDays, columnFor, planColumns, todayKey } from '../lib/dates'
 import { mergeItems } from '../lib/export'
-import { DEFAULT_FOCUS, fmt, PRESETS, stepMinutes } from '../lib/duration'
+import { askForNotifications, notificationsBlocked, notify } from '../lib/notify'
+import { fmt, PRESETS, stepMinutes } from '../lib/duration'
 import { uid } from '../lib/id'
 import { QUADRANTS, QUADRANT_BY_ID } from '../lib/quadrants'
+import { activeId, advance, effMinutes, leftovers, startRun } from '../lib/session'
 import {
   nextInQueue,
+  openInSession,
   planGroups,
   resolvePlanCursor,
   resolveSortCursor,
   resolveTodayCursor,
   sortGroups,
   todayList,
+  todaySessions,
 } from '../lib/selectors'
 import { childrenOf, draftIndex, isDone, lastInBlock, parentKey, treeOrder } from '../lib/tree'
 import type { Item, Mode, Quadrant } from '../lib/types'
@@ -60,7 +64,7 @@ function changedId(a: Item[], b: Item[]): string | null {
   const byId = new Map(b.map((i) => [i.id, i]))
   for (const i of a) {
     const j = byId.get(i.id)
-    if (!j || j.quadrant !== i.quadrant || j.slot !== i.slot || j.text !== i.text || j.done !== i.done || j.parentId !== i.parentId || j.minutes !== i.minutes) return i.id
+    if (!j || j.quadrant !== i.quadrant || j.slot !== i.slot || j.text !== i.text || j.done !== i.done || j.parentId !== i.parentId || j.minutes !== i.minutes || j.session !== i.session) return i.id
   }
   return b.find((j) => !a.some((i) => i.id === j.id))?.id ?? null
 }
@@ -108,6 +112,7 @@ export function makeItem(text: string, parent?: Item): Item {
     done: false,
     parentId: parent?.id ?? null,
     minutes: null,
+    session: parent?.session ?? 1,
   }
 }
 
@@ -132,6 +137,8 @@ function relocate(items: Item[], ids: string[], after: string): Item[] {
 function patch(id: string, change: Partial<Item>) {
   const item = findItem(id)
   if (!item) return
+  // A thought that moves to another day starts that day in the first session.
+  if (change.slot !== undefined && change.slot !== item.slot && change.session === undefined) change = { ...change, session: 1 }
   const same = (Object.keys(change) as (keyof Item)[]).every((k) => item[k] === change[k])
   if (same) return
   commit(get().items.map((i) => (i.id === id ? { ...i, ...change } : i)))
@@ -277,6 +284,7 @@ export function clearAll() {
   if (!get().items.length) return toast('Already empty')
   commit([])
   resetCursors()
+  set({ run: null })
   toast('Fresh start', 'mod+z')
 }
 
@@ -808,12 +816,12 @@ export function todayToggle() {
   patch(cur.id, { done: !cur.done })
   if (cur.done) return toast('Reopened', 'x')
   const s = get()
-  if (s.focus?.id === cur.id) set({ focus: null })
   const list = todayList(s.items, todayKey())
   const i = list.findIndex((it) => it.id === cur.id)
   const next = [...list.slice(i + 1), ...list.slice(0, i)].find((it) => !it.done)
   set({ todayCursor: next?.id ?? cur.id })
   toast(next ? 'Done. Next up' : "Done. That's everything for today", 'mod+z')
+  sessionSync() // a running session moves straight on to the next task
 }
 
 /** T: not today. Moves it to tomorrow without guilt (and without losing it). */
@@ -826,6 +834,7 @@ export function todayDefer() {
   patch(cur.id, { slot: addDays(todayKey(), 1) })
   set({ todayCursor: next?.id ?? null })
   toast(`"${truncate(cur.text, 24)}" moved to tomorrow`, 'mod+z')
+  sessionSync()
 }
 
 // ---------------------------------------------------------------- add on Today
@@ -897,10 +906,17 @@ export function todayAddBackToText() {
 /** Adds one task per non-empty line to today's plan, filed as the chips say. Returns the last one's id. */
 function todayAddTasks(texts: string[]): string | null {
   const add = get().todayAdd
+  const here = todayCurrent()?.session ?? 1
   const created = texts
     .map((t) => t.trim())
     .filter(Boolean)
-    .map((t) => ({ ...makeItem(t), quadrant: add?.quadrant ?? null, minutes: add?.minutes ?? null, slot: todayKey() }))
+    .map((t) => ({
+      ...makeItem(t),
+      quadrant: add?.quadrant ?? null,
+      minutes: add?.minutes ?? null,
+      slot: todayKey(),
+      session: here, // alongside the task you were on
+    }))
   if (!created.length) return null
   commit([...get().items, ...created])
   const id = created.at(-1)!.id
@@ -932,32 +948,115 @@ export function todayFocus(id: string) {
   set({ todayCursor: id })
 }
 
-// ---------------------------------------------------------------- focus timer
+// ---------------------------------------------------------------- work sessions
+//
+// Today's tasks can be split into sessions (⇧← / ⇧→ moves the selected task between them). F starts
+// the session the selected task is in: it walks through the open tasks, each for as long as its
+// estimate, and the clock runs down from the total. Nothing is ticked off for you. When the last
+// window closes, what's still open is yours to finish, give more time, and carry on with.
 
-/** F: start a focus block as long as the thought's estimate, or stop the one running on it. */
-export function focusToggle() {
+const sessionName = (session: number) => {
+  const i = todaySessions(get().items, todayKey()).findIndex((g) => g.session === session)
+  return `Session ${i === -1 ? session : i + 1}`
+}
+
+const openIds = (session: number) => new Set(openInSession(get().items, todayKey(), session).map((i) => i.id))
+
+const totalMinutes = (tasks: Item[]) => tasks.reduce((n, t) => n + effMinutes(t), 0)
+
+/** F: start the selected task's session, or stop the one running. */
+export function sessionToggle() {
+  if (get().run) return sessionStop()
+  sessionStart()
+}
+
+/** ↵: start the selected task's session, or carry on after time's up. Never stops one. */
+export function sessionStart() {
+  const { run } = get()
+  if (run) return run.phase === 'over' ? sessionCarryOn() : undefined
   const cur = todayCurrent()
   if (!cur) return nothingToday()
-  const { focus } = get()
-  if (focus?.id === cur.id) return focusStop()
-  const minutes = cur.minutes ?? DEFAULT_FOCUS
-  set({ focus: { id: cur.id, endsAt: Date.now() + minutes * 60_000, minutes } })
-  toast(`${fmt(minutes)} on "${truncate(cur.text, 24)}"`, 'f')
+  const tasks = openInSession(get().items, todayKey(), cur.session)
+  const started = startRun(cur.session, tasks, Date.now())
+  if (!started) return toast('Everything in this session is done')
+  set({ run: started, todayCursor: tasks[0].id })
+  askForNotifications()
+  toast(`${sessionName(cur.session)}: ${fmt(totalMinutes(tasks))} to work through`, 'f')
+  if (notificationsBlocked()) toast('Notifications are blocked here, so time-ups only show in this tab')
 }
 
-export function focusStop() {
-  if (!get().focus) return toast('No focus block running')
-  set({ focus: null })
-  toast('Focus block stopped')
+export function sessionStop() {
+  if (!get().run) return toast('No session running')
+  set({ run: null })
+  toast('Session stopped')
 }
 
-/** Called by the timer when the block runs out. */
-export function focusFinished() {
-  const { focus, items } = get()
-  if (!focus) return
-  const item = items.find((i) => i.id === focus.id)
-  set({ focus: null })
-  toast(item ? `Time. How did "${truncate(item.text, 24)}" go? X to tick it off` : 'Focus block finished')
+/** After time's up: start another round over what is still open, using the times as they are now. */
+export function sessionCarryOn() {
+  const { run } = get()
+  if (!run || run.phase !== 'over') return
+  const tasks = openInSession(get().items, todayKey(), run.session)
+  const next = startRun(run.session, tasks, Date.now())
+  if (!next) return sessionFinished(run.session)
+  set({ run: next, todayCursor: tasks[0].id })
+  toast(`Carrying on: ${fmt(totalMinutes(tasks))} for ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`)
+}
+
+function sessionFinished(session: number) {
+  const name = sessionName(session)
+  const another = todaySessions(get().items, todayKey()).find(
+    (g) => g.session !== session && g.items.some((i) => !i.done),
+  )
+  set({ run: null })
+  const more = another ? ` Next: ${sessionName(another.session)}` : ''
+  toast(`${name} done. Nice work.${more}`)
+}
+
+/**
+ * Brings the running session up to date: closes windows that have run out, passes over tasks that
+ * were ticked off, and tells you when time is up. Called every second while a session runs.
+ */
+export function sessionSync() {
+  const { run, items } = get()
+  if (!run) return
+  const open = openIds(run.session)
+  // After time is up the session ends once the last unfinished task is ticked off.
+  if (run.phase === 'over') return leftovers(run, open).length ? undefined : sessionFinished(run.session)
+  const { run: next, timedOut } = advance(run, items, open, Date.now())
+  if (next === run) return
+
+  const left = leftovers(next, open)
+  if (next.phase === 'over' && !left.length) return sessionFinished(run.session)
+
+  const active = activeId(next)
+  set({ run: next, todayCursor: next.phase === 'over' ? left[0] : (active ?? get().todayCursor) })
+  const name = sessionName(run.session)
+  const text = (id: string | null | undefined) => truncate(items.find((i) => i.id === id)?.text ?? '', 30)
+
+  if (next.phase === 'over') {
+    const body = `${left.length} not finished. Tick off what's done, give the rest more time, then carry on.`
+    if (timedOut.length) notify(`${name} is over`, body)
+    return toast(`${name} is over. ${left.length} not finished`)
+  }
+  if (!timedOut.length) return // moved on because a task was ticked off or removed: no alarm needed
+  const upNext = `Next: ${text(active)}`
+  notify(`Time's up: ${text(timedOut.at(-1))}`, upNext)
+  toast(`Time's up on "${text(timedOut.at(-1))}". ${upNext}`)
+}
+
+/** ⇧← / ⇧→: move the selected task to the previous or next session. Past the last one starts a new session. */
+export function todayMoveSession(dir: -1 | 1) {
+  const cur = todayCurrent()
+  if (!cur) return nothingToday()
+  const groups = todaySessions(get().items, todayKey())
+  const at = groups.findIndex((g) => g.session === cur.session)
+  const here = groups[at]
+  let session: number | undefined
+  if (dir < 0) session = groups[at - 1]?.session
+  else session = groups[at + 1]?.session ?? (here.items.length > 1 ? here.session + 1 : undefined)
+  if (session === undefined) return
+  patch(cur.id, { session })
+  set({ todayCursor: cur.id }) // the selection stays on the task you moved
 }
 
 // ---------------------------------------------------------------- navigation

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { Kbd } from '../components/Kbd'
 import { ParentRef, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
@@ -9,10 +9,23 @@ import { autosize } from '../lib/dom'
 import { DEFAULT_FOCUS, fmt } from '../lib/duration'
 import { EXIT_FAST, keepFocus, SPRING } from '../lib/motion'
 import { QUADRANT_BY_ID } from '../lib/quadrants'
-import { clarity, resolveTodayCursor, timeSummary, todayList } from '../lib/selectors'
+import {
+  clarity,
+  openInSession,
+  resolveTodayCursor,
+  timeLeft,
+  todayList,
+  todaySessions,
+} from '../lib/selectors'
+import { activeId, clock, effMinutes, leftovers, remainingMs, windowOf } from '../lib/session'
 import { splitLines } from '../lib/text'
+import type { Item } from '../lib/types'
+import { useNow } from '../lib/useNow'
 import {
   ADD_OPTIONS,
+  sessionCarryOn,
+  sessionStart,
+  sessionStop,
   setMode,
   todayAddArrow,
   todayAddBackToText,
@@ -48,44 +61,141 @@ export function ClarityLine({ items }: { items: Parameters<typeof clarity>[0] })
   )
 }
 
-/** "3h 20m planned · 45m done · 2h 35m left · done by 6:10 pm": what today adds up to. */
-function TimeSummary({ items, today }: { items: Parameters<typeof clarity>[0]; today: string }) {
-  const t = timeSummary(items, today)
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30_000)
-    return () => clearInterval(id)
-  }, [])
-  if (!t.planned && !t.unestimated) return null
-  const finish = new Date(now + t.left * 60_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+/** Minutes → "52m" / "1h 5m", rounding up so a running clock never shows 0 early. */
+const minutesLabel = (ms: number) => fmt(Math.max(1, Math.ceil(ms / 60_000)))
+
+const clockTime = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+
+/** What's left today and when you'd be done: an invitation to start while idle, a live countdown in a session. */
+function SessionSummary({ items, today }: { items: Item[]; today: string }) {
+  const run = useStore((s) => s.run)
+  const now = useNow(run?.phase === 'running' ? 1000 : 30_000)
+  const left = timeLeft(items, today)
+  if (!left.open) return null
+
+  let ms = left.minutes * 60_000
+  if (run?.phase === 'running') {
+    const sessionOpen = new Set(openInSession(items, today, run.session).map((i) => i.id))
+    const elsewhere = todayList(items, today).filter((i) => !i.done && !run.queue.includes(i.id))
+    ms = remainingMs(run, items, sessionOpen, now) + elsewhere.reduce((n, i) => n + effMinutes(i), 0) * 60_000
+  }
+  const doneBy = clockTime(now + ms)
+
   return (
     <p className="clarity clarity--time">
-      {t.planned > 0 && (
+      <span>
+        <b>{minutesLabel(ms)}</b> left
+      </span>
+      {run?.phase === 'running' && (
         <span>
-          <b>{fmt(t.planned)}</b> planned
+          done by <b>{doneBy}</b>
         </span>
       )}
-      {t.done > 0 && (
+      {run?.phase === 'over' && (
         <span>
-          <b>{fmt(t.done)}</b> done
+          carry on and you're done by <b>{doneBy}</b>
         </span>
       )}
-      {t.left > 0 && (
-        <>
-          <span>
-            <b>{fmt(t.left)}</b> left
-          </span>
-          <span>
-            if you start now, done by <b>{finish}</b>
-          </span>
-        </>
+      {!run && (
+        <span>
+          <button className="linkish" onMouseDown={keepFocus} onClick={sessionStart}>
+            start now
+          </button>{' '}
+          and you're done by <b>{doneBy}</b> <Kbd k="f" size="xs" />
+        </span>
       )}
-      {t.unestimated > 0 && (
+      {!run && left.unestimated > 0 && (
         <span className="clarity__muted">
-          {t.unestimated} without a time <Kbd k="=" size="xs" />
+          {left.unestimated} without a time, counted as {fmt(DEFAULT_FOCUS)} <Kbd k="=" size="xs" />
         </span>
       )}
     </p>
+  )
+}
+
+/** The running session: the clock for the whole thing, the task it's on, and what to do next. */
+function SessionPanel({ items, today }: { items: Item[]; today: string }) {
+  const run = useStore((s) => s.run)
+  const now = useNow(run?.phase === 'running' ? 1000 : null)
+  if (!run) return null
+
+  const name = `Session ${Math.max(1, todaySessions(items, today).findIndex((g) => g.session === run.session) + 1)}`
+  const open = new Set(openInSession(items, today, run.session).map((i) => i.id))
+  const byId = new Map(items.map((i) => [i.id, i]))
+
+  if (run.phase === 'over') {
+    const left = leftovers(run, open)
+    return (
+      <section className="session" data-phase="over" aria-live="polite">
+        <div className="session__head">
+          <span className="eyebrow">// {name.toLowerCase()} · time's up</span>
+          <span className="session__clock">{clock(0)}</span>
+        </div>
+        <p className="session__lede">
+          <b>{left.length}</b> not finished. Tick off what you did <Kbd k="x" size="xs" />, give the rest the time they
+          still need <Kbd k="-" size="xs" />
+          <Kbd k="=" size="xs" />, then carry on <Kbd k="enter" size="xs" />.
+        </p>
+        <div className="session__actions">
+          <button className="cta cta--inline" onMouseDown={keepFocus} onClick={sessionCarryOn}>
+            Carry on <Kbd k="enter" size="xs" />
+          </button>
+          <button className="cta cta--inline" onMouseDown={keepFocus} onClick={sessionStop}>
+            Stop <Kbd k="f" size="xs" />
+          </button>
+        </div>
+      </section>
+    )
+  }
+
+  const active = byId.get(activeId(run) ?? '')
+  const win = windowOf(run, items)
+  const upNext = run.queue
+    .slice(run.index + 1)
+    .map((id) => byId.get(id))
+    .find((i): i is Item => Boolean(i) && open.has(i!.id))
+  const winLeft = win ? win.start + win.ms - now : 0
+  return (
+    <section className="session" data-phase="running" aria-live="off">
+      <div className="session__head">
+        <span className="eyebrow">// {name.toLowerCase()} · running</span>
+        <span className="session__clock">{clock(remainingMs(run, items, open, now))}</span>
+      </div>
+      {active && (
+        <>
+          <div className="session__now">
+            <span className="tag tag--focus">now</span>
+            <strong>{active.text}</strong>
+            <span className="session__window">
+              {clock(winLeft)} of {fmt(effMinutes(active))}
+            </span>
+          </div>
+          <div className="progress" aria-hidden>
+            <div className="progress__fill" style={{ width: `${win ? Math.min(100, ((now - win.start) / win.ms) * 100) : 0}%` }} />
+          </div>
+        </>
+      )}
+      <p className="session__lede">
+        {upNext ? (
+          <>
+            Next: <b>{upNext.text}</b> · {fmt(effMinutes(upNext))}
+          </>
+        ) : (
+          'Last one.'
+        )}
+      </p>
+      <p className="session__keys">
+        <span>
+          <Kbd k="x" size="xs" /> done, next
+        </span>
+        <span>
+          <Kbd k="=" size="xs" /> more time
+        </span>
+        <span>
+          <Kbd k="f" size="xs" /> stop
+        </span>
+      </p>
+    </section>
   )
 }
 
@@ -259,14 +369,93 @@ export function TodayMode() {
   const items = useStore((s) => s.items)
   const adding = useStore((s) => s.todayAdd !== null)
   const cursor = useStore((s) => s.todayCursor)
-  const focus = useStore((s) => s.focus)
+  const run = useStore((s) => s.run)
   const today = todayKey()
 
   const list = useMemo(() => todayList(items, today), [items, today])
   const currentId = resolveTodayCursor(items, cursor, today)
   const done = list.filter((i) => i.done).length
   const allDone = list.length > 0 && done === list.length
-  const current = list.find((i) => i.id === currentId)
+  const sessions = useMemo(() => todaySessions(items, today), [items, today])
+  const active = run ? activeId(run) : null
+  // Tasks whose window closed while still open, and (once time is up) everything left to finish.
+  const overtime = new Set(run && run.phase === 'running' ? run.queue.slice(0, run.index).filter((id) => list.some((i) => i.id === id && !i.done)) : [])
+  const leftSet = new Set(run?.phase === 'over' ? run.queue.filter((id) => list.some((i) => i.id === id && !i.done)) : [])
+
+  const nodes = sessions.flatMap((group, g) => {
+    const open = group.items.filter((i) => !i.done)
+    const running = run?.session === group.session
+    const hasCursor = group.items.some((i) => i.id === currentId)
+    const head = (
+      <motion.li
+        key={`session-${group.session}`}
+        layout="position"
+        className="session-head"
+        data-running={(running && run?.phase === 'running') || undefined}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0, transition: EXIT_FAST }}
+      >
+        <span className="session-head__name">Session {g + 1}</span>
+        <span className="session-head__meta">
+          {open.length ? `${open.length} open · ${fmt(open.reduce((n, i) => n + effMinutes(i), 0))}` : 'all done'}
+        </span>
+        <span className="session-head__right">
+          {running && run?.phase === 'running' && <span className="session-head__live">running</span>}
+          {!run && hasCursor && open.length > 0 && (
+            <>
+              <Kbd k="f" size="xs" /> start
+            </>
+          )}
+        </span>
+      </motion.li>
+    )
+    const rows = group.items.map((item) => {
+      const selected = item.id === currentId
+      const isActive = active === item.id
+      return (
+        <motion.li
+          key={item.id}
+          layout="position"
+          className="row today-row"
+          data-selected={selected || undefined}
+          data-done={item.done || undefined}
+          data-focus={isActive || undefined}
+          data-left={leftSet.has(item.id) || undefined}
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, x: 24, transition: EXIT_FAST }}
+          transition={SPRING}
+          onClick={() => todayFocus(item.id)}
+        >
+          <span className="row__index today-check" aria-hidden>
+            <AnimatePresence initial={false} mode="wait">
+              <motion.span
+                key={item.done ? 'x' : 'o'}
+                initial={{ scale: 0.4, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.4, opacity: 0, transition: { duration: 0.06 } }}
+              >
+                {item.done ? '[x]' : '[ ]'}
+              </motion.span>
+            </AnimatePresence>
+          </span>
+          <span className="row__main">
+            <span className="row__text">{item.text}</span>
+            <ParentRef item={item} className="parent-ref--row" />
+          </span>
+          <span className="row__meta">
+            {isActive && <span className="tag tag--focus">now</span>}
+            {overtime.has(item.id) && <span className="tag tag--overdue">over time</span>}
+            <TimeTag item={item} />
+            {isOverdue(item.slot, today) && <SlotTag item={item} today={today} />}
+            {item.quadrant && <QuadrantTag item={item} />}
+          </span>
+        </motion.li>
+      )
+    })
+    return [head, ...rows]
+  })
 
   useEffect(() => {
     document.querySelector('.today-row[data-selected]')?.scrollIntoView({ block: 'nearest' })
@@ -291,7 +480,8 @@ export function TodayMode() {
             </span>
           </div>
         )}
-        {list.length > 0 && <TimeSummary items={items} today={today} />}
+        {list.length > 0 && <SessionSummary items={items} today={today} />}
+        <SessionPanel items={items} today={today} />
 
         {list.length === 0 && !adding ? (
           <div className="dump-empty dump-empty--static">
@@ -310,48 +500,7 @@ export function TodayMode() {
           <ol className="dump__list today-list">
             {adding && <Composer />}
             <AnimatePresence initial={false} mode="popLayout">
-              {list.map((item) => {
-                const selected = item.id === currentId
-                const focused = focus?.id === item.id
-                return (
-                  <motion.li
-                    key={item.id}
-                    layout="position"
-                    className="row today-row"
-                    data-selected={selected || undefined}
-                    data-done={item.done || undefined}
-                    data-focus={focused || undefined}
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, x: 24, transition: EXIT_FAST }}
-                    transition={SPRING}
-                    onClick={() => todayFocus(item.id)}
-                  >
-                    <span className="row__index today-check" aria-hidden>
-                      <AnimatePresence initial={false} mode="wait">
-                        <motion.span
-                          key={item.done ? 'x' : 'o'}
-                          initial={{ scale: 0.4, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          exit={{ scale: 0.4, opacity: 0, transition: { duration: 0.06 } }}
-                        >
-                          {item.done ? '[x]' : '[ ]'}
-                        </motion.span>
-                      </AnimatePresence>
-                    </span>
-                    <span className="row__main">
-                      <span className="row__text">{item.text}</span>
-                      <ParentRef item={item} className="parent-ref--row" />
-                    </span>
-                    <span className="row__meta">
-                      {focused && <span className="tag tag--focus">focus</span>}
-                      <TimeTag item={item} />
-                      {isOverdue(item.slot, today) && <SlotTag item={item} today={today} />}
-                      {item.quadrant && <QuadrantTag item={item} />}
-                    </span>
-                  </motion.li>
-                )
-              })}
+              {nodes}
             </AnimatePresence>
           </ol>
         )}
@@ -368,7 +517,11 @@ export function TodayMode() {
               <Kbd k="t" size="xs" /> not today
             </span>
             <span>
-              <Kbd k="f" size="xs" /> focus {fmt(current?.minutes ?? DEFAULT_FOCUS)}
+              <Kbd k="f" size="xs" /> {run ? 'stop session' : 'start session'}
+            </span>
+            <span>
+              <Kbd k="shift+left" size="xs" />
+              <Kbd k="shift+right" size="xs" /> session
             </span>
             <span>
               <Kbd k="-" size="xs" />

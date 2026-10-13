@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import type { Run } from '../lib/session'
 import type { Item, Mode, Quadrant, Theme } from '../lib/types'
 
 export type Editing =
@@ -57,8 +58,8 @@ export interface State {
     /** Which option arrow keys are on, or null while the cursor is in the text. */
     cursor: { row: number; col: number } | null
   } | null
-  /** A running focus block on one thought. Persisted, so it survives a reload. */
-  focus: { id: string; endsAt: number; minutes: number } | null
+  /** The work session in progress, if any. Persisted, so it survives a reload. */
+  run: Run | null
 
   // overlays
   palette: { open: boolean; seed: string; nonce: number }
@@ -88,7 +89,7 @@ export const useStore = create<State>()(
 
         todayCursor: null,
         todayAdd: null,
-        focus: null,
+        run: null,
 
         palette: { open: false, seed: '', nonce: 0 },
         helpOpen: false,
@@ -99,15 +100,22 @@ export const useStore = create<State>()(
       }),
     {
       name: 'composure:v1',
-      version: 3,
-      // v2 added subtasks (older thoughts are all top-level), v3 added time estimates (none yet).
+      version: 4,
+      // v2 added subtasks (older thoughts are all top-level), v3 time estimates (none yet), v4 work
+      // sessions (everything is in the first) and replaced the single-task focus timer.
       migrate: (persisted) => {
-        const old = persisted as { items?: Partial<Item>[] }
-        const items = (old.items ?? []).map((i) => ({ ...i, parentId: i.parentId ?? null, minutes: i.minutes ?? null }))
-        return { ...old, items } as State
+        const old = persisted as { items?: Partial<Item>[]; focus?: unknown }
+        const items = (old.items ?? []).map((i) => ({
+          ...i,
+          parentId: i.parentId ?? null,
+          minutes: i.minutes ?? null,
+          session: i.session ?? 1,
+        }))
+        const { focus: _focus, ...rest } = old
+        return { ...rest, items } as State
       },
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ items: s.items, mode: s.mode, theme: s.theme, hud: s.hud, focus: s.focus }),
+      partialize: (s) => ({ items: s.items, mode: s.mode, theme: s.theme, hud: s.hud, run: s.run }),
     },
   ),
 )

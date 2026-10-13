@@ -56,14 +56,24 @@ function hintsFor(s: State): Hint[] {
             h('backspace', 'back to text'),
           ]
         : [h('enter', 'add'), h('down', 'options'), h('⇧ ⇧', 'done', true), h('escape', 'close')]
+    if (s.run?.phase === 'over')
+      return [
+        h('x', 'done'),
+        h(['-', '='], 'time needed'),
+        h('enter', 'carry on'),
+        h(['up', 'down'], 'move'),
+        h('f', 'stop'),
+      ]
+    if (s.run)
+      return [h('x', 'done, next'), h(['-', '='], 'more / less time'), h(['up', 'down'], 'move'), h('f', 'stop session')]
     return [
+      h('f', 'start session'),
       h('n', 'add'),
       h(['up', 'down'], 'move'),
       h('x', 'done'),
-      h('t', 'not today'),
-      h('f', s.focus ? 'focus on/off' : 'focus'),
+      h(['shift+left', 'shift+right'], 'session'),
       h(['-', '='], 'time'),
-      h('alt+left', 'plan'),
+      h('t', 'not today'),
     ]
   }
 

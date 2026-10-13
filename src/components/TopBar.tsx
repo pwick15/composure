@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { todayKey } from '../lib/dates'
 import { keepFocus, SNAP } from '../lib/motion'
 import { planQueue, todayList } from '../lib/selectors'
+import { leaves } from '../lib/tree'
 import type { Mode } from '../lib/types'
 import { openPalette, setMode, toggleHelp } from '../state/actions'
 import { useStore } from '../state/store'
@@ -21,7 +22,7 @@ export function TopBar() {
   const items = useStore((s) => s.items)
 
   const counts = useMemo(() => {
-    const unsorted = items.filter((i) => !i.quadrant).length
+    const unsorted = leaves(items).filter((i) => !i.quadrant).length
     const unplanned = planQueue(items, todayKey()).length
     const today = todayList(items, todayKey())
     const open = today.filter((i) => !i.done).length

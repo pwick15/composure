@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { todayKey } from '../lib/dates'
 import type { Item } from '../lib/types'
 import { getState, setState, useStore } from '../state/store'
+import { FocusPill } from '../components/FocusPill'
 import { DumpMode } from './DumpMode'
 import { PlanMode } from './PlanMode'
 import { SortMode } from './SortMode'
@@ -22,7 +23,7 @@ beforeEach(() => load([]))
 /** Server rendering splits adjacent text nodes with comment markers; drop them to match on text. */
 const render = (view: ReactElement) => renderToString(view).replaceAll('<!-- -->', '')
 
-const base: Item = { id: '', text: '', createdAt: 0, quadrant: null, slot: null, done: false, parentId: null, minutes: null }
+const base: Item = { id: '', text: '', createdAt: 0, quadrant: null, slot: null, done: false, parentId: null, minutes: null, session: 1 }
 const today = todayKey()
 
 /** A parent with two subtasks that are filed and planned, and a plain thought. */
@@ -80,9 +81,51 @@ describe('screens', () => {
     const html = render(<TodayMode />)
     expect(html).toContain('book flights')
     expect(html).toContain('~30m')
-    expect(html).toContain('2h</b> planned')
-    expect(html).toContain('30m</b> left')
-    expect(html).toContain('1 without a time')
+    // 30m flights + a default 25m for the rent without an estimate; the hotel is done.
+    expect(html).toContain('55m</b> left')
+    expect(html).toContain('start now')
+    expect(html).toContain('1 without a time, counted as 25m')
+    expect(html).toContain('Session 1')
     expect(html).not.toMatch(/row__text">Plan trip/)
+  })
+
+  it('Today with a session running shows its clock, the task it is on, and the pill', () => {
+    seed()
+    const items = getState().items
+    const run = { session: 1, queue: ['f', 'r'], index: 0, startedAt: Date.now() - 5 * 60_000, phase: 'running' as const }
+    Object.assign(snapshot, { run })
+    setState({ run })
+    const html = render(<TodayMode />)
+    expect(html).toContain('session 1 · running')
+    expect(html).toContain('book flights') // the task it's on
+    expect(html).toContain('>now<')
+    expect(html).toContain('of 30m') // its window
+    expect(html).toContain('Next: <b>pay rent</b> · 25m')
+    expect(html).toContain('done by') // a live finish time instead of an invitation
+    expect(html).not.toContain('start now')
+    expect(items).toHaveLength(4)
+    expect(render(<FocusPill />)).toMatch(/\d\d:\d\d/)
+  })
+
+  it('Today after time is up asks what to do with what is left', () => {
+    seed()
+    const run = { session: 1, queue: ['f', 'r'], index: 1, startedAt: 0, phase: 'over' as const }
+    Object.assign(snapshot, { run })
+    setState({ run })
+    const html = render(<TodayMode />)
+    expect(html.replaceAll('&#x27;', "'")).toContain("session 1 · time's up")
+    expect(html).toContain('<b>2</b> not finished')
+    expect(html).toContain('Carry on')
+    expect(render(<FocusPill />).replaceAll('&#x27;', "'")).toContain("time's up")
+  })
+
+  it('Today splits sessions under their own headings', () => {
+    seed()
+    load(getState().items.map((i) => (i.id === 'r' ? { ...i, session: 2 } : i)))
+    const html = render(<TodayMode />)
+    expect(html).toContain('Session 1')
+    expect(html).toContain('Session 2')
+    expect(html.indexOf('Session 2')).toBeLessThan(html.indexOf('pay rent'))
+    expect(html.indexOf('pay rent')).toBeGreaterThan(html.indexOf('book flights'))
   })
 })

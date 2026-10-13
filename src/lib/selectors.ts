@@ -1,5 +1,5 @@
 import { columnFor, isOverdue, planColumns } from './dates'
-import { sumMinutes } from './duration'
+import { effMinutes } from './session'
 import { QUADRANTS, QUADRANT_RANK } from './quadrants'
 import { leaves } from './tree'
 import type { Item } from './types'
@@ -85,12 +85,30 @@ export function itemsInColumn(all: Item[], col: string, today: string): Item[] {
 
 // ---------------------------------------------------------------- today
 
-/** Today's plan: anything overdue and unfinished first, then today's thoughts in list order. */
+/**
+ * Today's plan, one work session after another. Inside a session anything overdue comes first,
+ * then quadrant by quadrant, quickest first.
+ */
 export function todayList(all: Item[], today: string): Item[] {
-  const items = leaves(all)
-  const overdue = items.filter((i) => isPlannable(i) && !i.done && isOverdue(i.slot, today))
-  return [...overdue.sort(tackleOrder), ...items.filter((i) => isPlannable(i) && i.slot === today).sort(tackleOrder)]
+  const items = leaves(all).filter((i) => isPlannable(i) && (i.slot === today || (!i.done && isOverdue(i.slot, today))))
+  const late = (i: Item) => Number(isOverdue(i.slot, today))
+  return items.sort((a, b) => a.session - b.session || late(b) - late(a) || tackleOrder(a, b))
 }
+
+/** Today's plan split into its work sessions, in order. Empty sessions don't exist. */
+export function todaySessions(items: Item[], today: string): { session: number; items: Item[] }[] {
+  const groups: { session: number; items: Item[] }[] = []
+  for (const item of todayList(items, today)) {
+    const last = groups.at(-1)
+    if (last?.session === item.session) last.items.push(item)
+    else groups.push({ session: item.session, items: [item] })
+  }
+  return groups
+}
+
+/** The tasks of a session that still need doing. */
+export const openInSession = (items: Item[], today: string, session: number): Item[] =>
+  todayList(items, today).filter((i) => !i.done && i.session === session)
 
 export function resolveTodayCursor(items: Item[], cursor: string | null, today: string): string | null {
   const list = todayList(items, today)
@@ -109,14 +127,12 @@ export function clarity(items: Item[], today: string) {
   }
 }
 
-/** How much time today holds: planned, done and left, plus how many open tasks have no estimate yet. */
-export function timeSummary(items: Item[], today: string) {
-  const list = todayList(items, today)
-  const open = list.filter((i) => !i.done)
+/** Time still to go today. A task with no estimate counts as a default-length one, as a session would. */
+export function timeLeft(items: Item[], today: string) {
+  const open = todayList(items, today).filter((i) => !i.done)
   return {
-    planned: sumMinutes(list),
-    done: sumMinutes(list.filter((i) => i.done)),
-    left: sumMinutes(open),
+    minutes: open.reduce((n, i) => n + effMinutes(i), 0),
     unestimated: open.filter((i) => i.minutes === null).length,
+    open: open.length,
   }
 }
