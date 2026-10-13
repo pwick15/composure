@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, todayKey } from '../lib/dates'
+import { makeBackup } from '../lib/export'
 import { todayList } from '../lib/selectors'
 import { parentOf, treeOrder } from '../lib/tree'
 import * as a from './actions'
+import { importFile } from './exporters'
 import { getState, setState, useStore } from './store'
 
 const initial = useStore.getState()
@@ -532,5 +534,81 @@ describe('time estimates', () => {
     a.todayFocus(getState().items.find((i) => i.text === 'quick')!.id)
     for (let i = 0; i < 7; i++) a.estimateStep(1) // 5 → 10 → 15 → 25 → 30 → 45 → 60 → 90m
     expect(order()).toEqual(['slow', 'quick'])
+  })
+})
+
+// ---------------------------------------------------------------- export + import
+
+describe('export and import', () => {
+  const file = (text: string, name = 'in.json') => new File([text], name)
+
+  /** Builds a small, fully filled-in world: a parent with subtasks, times, filing and a day. */
+  function world() {
+    tripWithSubtasks()
+    setState({
+      items: getState().items.map((i) => ({
+        ...i,
+        quadrant: i.text === 'flights' ? ('do' as const) : null,
+        slot: i.text === 'flights' ? todayKey() : null,
+        minutes: i.text === 'flights' ? 45 : null,
+        done: i.text === 'hotel',
+      })),
+    })
+    return getState().items
+  }
+
+  it('an export imports into an empty instance exactly as it was', async () => {
+    const before = world()
+    const exported = makeBackup(before)
+    setState(initial, true)
+    await importFile(file(exported))
+    expect(getState().items).toEqual(before)
+    expect(getState().toasts.at(-1)?.text).toBe('Imported 4 thoughts')
+  })
+
+  it('importing never overwrites: what is already here stays, only new thoughts are added', async () => {
+    const before = world()
+    const exported = makeBackup(before)
+    setState({ items: before.map((i) => (i.text === 'flights' ? { ...i, text: 'flights (edited here)' } : i)) })
+    await importFile(file(exported))
+    expect(getState().items).toHaveLength(4)
+    expect(getState().items.map((i) => i.text)).toContain('flights (edited here)')
+    expect(getState().items.map((i) => i.text)).not.toContain('flights')
+    expect(getState().toasts.at(-1)?.text).toBe('Already here: all 4 thoughts')
+
+    a.removeItem(before[3].id) // Pay rent is gone locally; importing brings it back, once
+    await importFile(file(exported))
+    expect(getState().items.map((i) => i.text)).toContain('Pay rent')
+    expect(getState().toasts.at(-1)?.text).toBe('Imported 1 thought (3 already here)')
+  })
+
+  it('import is one undo step', async () => {
+    const exported = makeBackup(world())
+    setState(initial, true)
+    await importFile(file(exported))
+    a.undo()
+    expect(getState().items).toHaveLength(0)
+  })
+
+  it('a Markdown list becomes thoughts: headings skipped, [x] kept as done', async () => {
+    dump('existing')
+    await importFile(file('# Plan\n\n## Today\n- [ ] call dentist\n- [x] pay rent (10m)\n* buy milk\n---\n1. renew passport\n', 'x.md'))
+    expect(getState().items.map((i) => [i.text, i.done])).toEqual([
+      ['existing', false],
+      ['call dentist', false],
+      ['pay rent (10m)', true],
+      ['buy milk', false],
+      ['renew passport', false],
+    ])
+  })
+
+  it('says so when a file is not an export, rather than guessing', async () => {
+    await importFile(file('{ "hello": "world" }'))
+    expect(getState().items).toHaveLength(0)
+    expect(getState().toasts.at(-1)?.text).toMatch(/Import failed/)
+    await importFile(file('{ nope'))
+    expect(getState().toasts.at(-1)?.text).toBe('Import failed: not a Composure export')
+    await importFile(file(''))
+    expect(getState().toasts.at(-1)?.text).toBe('Nothing to import in that file')
   })
 })

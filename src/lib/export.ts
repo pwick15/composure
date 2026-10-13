@@ -176,3 +176,10 @@ export function parseBackup(json: string): Item[] {
   const nested = new Set(items.filter((i) => i.parentId).map((i) => i.id))
   return items.map((i) => (i.parentId && nested.has(i.parentId) ? { ...i, parentId: null } : i))
 }
+
+/** Adds what a file holds to what's already here. A thought that is already here (same id) stays as it is. */
+export function mergeItems(existing: Item[], incoming: Item[]): { items: Item[]; added: number; skipped: number } {
+  const have = new Set(existing.map((i) => i.id))
+  const fresh = incoming.filter((i) => !have.has(i.id))
+  return { items: [...existing, ...fresh], added: fresh.length, skipped: incoming.length - fresh.length }
+}

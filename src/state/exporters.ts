@@ -1,6 +1,7 @@
 import { todayKey } from '../lib/dates'
 import { makeBackup, matrixMarkdown, parseBackup, planICS, planMarkdown, thingsURL } from '../lib/export'
-import { replaceItems, toast } from './actions'
+import { parseNotes } from '../lib/text'
+import { importItems, makeItem, toast } from './actions'
 import { getState as get } from './store'
 
 async function copyText(text: string): Promise<boolean> {
@@ -54,24 +55,39 @@ export function sendToThings() {
 }
 
 export function downloadBackup() {
-  download(`composure-backup-${todayKey()}.json`, 'application/json', makeBackup(get().items))
-  toast('Backup downloaded')
+  const { items } = get()
+  if (!items.length) return toast('Nothing to export yet', 'shift+1')
+  download(`composure-${todayKey()}.json`, 'application/json', makeBackup(items))
+  toast(`Exported ${items.length} ${items.length === 1 ? 'thought' : 'thoughts'}. Import it anywhere with ⌘O`)
 }
 
-export function restoreBackup() {
+/**
+ * Imports a file: a Composure export brings everything back exactly (times, subtasks, where each
+ * thought is filed); a Markdown or text list becomes new thoughts, one per line. Nothing here is
+ * overwritten, and ⌘Z takes the import back.
+ */
+export async function importFile(file: File) {
+  try {
+    const text = await file.text()
+    const isExport = text.trimStart().startsWith('{')
+    const incoming = isExport ? parseBackup(text) : parseNotes(text).map(({ text: t, done }) => ({ ...makeItem(t), done }))
+    if (!incoming.length) return toast('Nothing to import in that file')
+    const { added, skipped } = importItems(incoming)
+    const what = `${added} ${added === 1 ? 'thought' : 'thoughts'}`
+    if (!added) return toast(`Already here: all ${skipped} thoughts`)
+    toast(skipped ? `Imported ${what} (${skipped} already here)` : `Imported ${what}`, 'mod+z')
+  } catch (err) {
+    toast(`Import failed: ${err instanceof SyntaxError ? 'not a Composure export' : (err as Error).message}`)
+  }
+}
+
+export function pickImport() {
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = 'application/json,.json'
-  input.onchange = async () => {
+  input.accept = '.json,.md,.markdown,.txt,application/json,text/markdown,text/plain'
+  input.onchange = () => {
     const file = input.files?.[0]
-    if (!file) return
-    try {
-      const items = parseBackup(await file.text())
-      replaceItems(items)
-      toast(`Restored ${items.length} items`, 'mod+z')
-    } catch (err) {
-      toast(`Restore failed: ${(err as Error).message}`)
-    }
+    if (file) void importFile(file)
   }
   input.click()
 }

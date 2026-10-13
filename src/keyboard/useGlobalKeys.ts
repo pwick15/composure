@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { flushSync } from 'react-dom'
 import { splitLines } from '../lib/text'
 import { openPalette, pasteLines, startDraft, toggleHelp } from '../state/actions'
+import { importFile } from '../state/exporters'
 import { getState } from '../state/store'
 import { findCommand, hudOf } from './commands'
 import { feedback } from './feedback'
@@ -61,13 +62,31 @@ function onPaste(e: ClipboardEvent) {
   pasteLines(lines)
 }
 
+// Dropping a file anywhere imports it.
+const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files')
+
+function onDragOver(e: DragEvent) {
+  if (hasFiles(e)) e.preventDefault()
+}
+
+function onDrop(e: DragEvent) {
+  const file = e.dataTransfer?.files[0]
+  if (!file) return
+  e.preventDefault()
+  void importFile(file)
+}
+
 export function useGlobalKeys() {
   useEffect(() => {
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('paste', onPaste)
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('drop', onDrop)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('paste', onPaste)
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('drop', onDrop)
     }
   }, [])
 }

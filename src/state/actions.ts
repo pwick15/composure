@@ -1,4 +1,5 @@
 import { addDays, columnFor, planColumns, todayKey } from '../lib/dates'
+import { mergeItems } from '../lib/export'
 import { DEFAULT_FOCUS, fmt, PRESETS, stepMinutes } from '../lib/duration'
 import { uid } from '../lib/id'
 import { QUADRANTS, QUADRANT_BY_ID } from '../lib/quadrants'
@@ -248,6 +249,13 @@ export function outdentItem(id: string): boolean {
     ),
   )
   return true
+}
+
+/** Brings in thoughts from a file without touching what is here. Returns how many were new. */
+export function importItems(incoming: Item[]): { added: number; skipped: number } {
+  const { items, added, skipped } = mergeItems(get().items, incoming)
+  if (added) commit(items)
+  return { added, skipped }
 }
 
 export function replaceItems(items: Item[]) {

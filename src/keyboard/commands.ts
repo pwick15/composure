@@ -534,8 +534,26 @@ export const COMMANDS: Command[] = [
   },
 
   // ------------------------------------------------------------ data
-  { id: 'data.backup', title: 'Download backup (.json)', group: 'Data', keywords: 'export save', run: x.downloadBackup },
-  { id: 'data.restore', title: 'Restore from backup…', group: 'Data', keywords: 'import load', run: x.restoreBackup },
+  {
+    id: 'data.export',
+    title: 'Export everything to a file',
+    hud: 'Export',
+    group: 'Data',
+    keys: ['mod+s'],
+    inInput: true,
+    keywords: 'backup save download json share move transfer',
+    run: x.downloadBackup,
+  },
+  {
+    id: 'data.import',
+    title: 'Import from a file…',
+    hud: 'Import',
+    group: 'Data',
+    keys: ['mod+o'],
+    inInput: true,
+    keywords: 'restore load open merge markdown md txt json backup',
+    run: x.pickImport,
+  },
   { id: 'data.clearDone', title: 'Clear completed items', group: 'Data', keywords: 'remove done', run: a.clearDone },
   {
     id: 'data.clearAll',

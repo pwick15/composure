@@ -18,6 +18,8 @@ Sort and Plan share the same navigation. Got one wrong? `⌫` brings back the la
 
 `⌘K` searches every command, shortcut and thought. In Sort and Plan, typing any letter that isn't a shortcut opens search with that letter, Things 3 style. `?` shows every shortcut.
 
+**Export and import.** `⌘S` saves everything to a `.json` file; `⌘O` (or dropping a file anywhere on the window) imports one. An export carries it all: subtasks, times, where each thought is filed and planned. Importing only adds: thoughts already here (same id) stay as they are, `⌘Z` takes the whole import back, and a toast says how many were new. Importing a Markdown or text list works too, one thought per line, with headings skipped and `[x]` kept as done. Markdown is lossy though, so use the `.json` to move between instances.
+
 When the week is planned, export from search: copy as Markdown, download an `.ics` calendar file, or send to Things 3.
 
 ## Develop
