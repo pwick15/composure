@@ -81,11 +81,11 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'mode.archive',
-    title: 'Archive: what you finished',
+    title: 'Open archive',
     hud: 'Archive',
     group: 'Modes',
     keys: ['shift+5'],
-    keywords: 'done completed finished history past old',
+    keywords: 'archive done completed finished history past old',
     run: () => a.setMode('archive'),
   },
   {
@@ -548,6 +548,16 @@ export const COMMANDS: Command[] = [
   },
 
   // ------------------------------------------------------------ archive
+  {
+    id: 'archive.back',
+    title: 'Back',
+    hud: 'Back',
+    group: 'Archive',
+    scope: 'archive',
+    keys: ['backspace', 'escape'],
+    keywords: 'close leave exit return',
+    run: a.archiveBack,
+  },
   {
     id: 'archive.reopen',
     title: 'Reopen',

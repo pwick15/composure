@@ -4,14 +4,17 @@ import { Kbd } from '../components/Kbd'
 import { ParentRef, QuadrantTag, TimeTag } from '../components/Tags'
 import { addDays, longDate, todayKey } from '../lib/dates'
 import { fmt, sumMinutes } from '../lib/duration'
-import { EXIT_FAST, SPRING } from '../lib/motion'
+import { EXIT_FAST, keepFocus, SPRING } from '../lib/motion'
 import { archiveDays, resolveArchiveCursor } from '../lib/selectors'
-import { archiveFocus } from '../state/actions'
+import { archiveBack, archiveFocus } from '../state/actions'
+import type { Mode } from '../lib/types'
 import { useStore } from '../state/store'
 
 /** "Yesterday", "Tue 13 Oct", or "Earlier" for things nobody dated. */
 const dayLabel = (day: string | null, today: string) =>
   day === null ? 'Earlier' : day === addDays(today, -1) ? 'Yesterday' : longDate(day)
+
+const SCREEN: Record<Mode, string> = { dump: 'Dump', sort: 'Sort', plan: 'Plan', today: 'Today', archive: 'Dump' }
 
 const timeOf = (ms: number | null) =>
   ms === null ? '' : new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -19,6 +22,7 @@ const timeOf = (ms: number | null) =>
 export function ArchiveMode() {
   const items = useStore((s) => s.items)
   const cursor = useStore((s) => s.archiveCursor)
+  const from = useStore((s) => s.archiveFrom)
   const today = todayKey()
 
   const days = useMemo(() => archiveDays(items, today), [items, today])
@@ -79,6 +83,9 @@ export function ArchiveMode() {
   return (
     <div className="dump">
       <div className="dump__inner">
+        <button className="cta cta--inline archive-back" onMouseDown={keepFocus} onClick={archiveBack}>
+          <span aria-hidden>←</span> Back to {SCREEN[from]} <Kbd k="backspace" size="xs" />
+        </button>
         <header className="dump__head">
           <div className="eyebrow">// archive</div>
           <h1>{total ? 'What you got done.' : 'Nothing archived yet.'}</h1>

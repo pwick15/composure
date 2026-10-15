@@ -55,6 +55,8 @@ export interface State {
 
   // archive
   archiveCursor: string | null
+  /** The screen the Archive was opened from, so Back returns to it. Not persisted. */
+  archiveFrom: Mode
   /** The "add a task" line on Today while it's open, with what the next task will be filed as. */
   todayAdd: {
     quadrant: Quadrant | null
@@ -93,6 +95,7 @@ export const useStore = create<State>()(
 
         todayCursor: null,
         archiveCursor: null,
+        archiveFrom: 'dump',
         todayAdd: null,
         run: null,
 

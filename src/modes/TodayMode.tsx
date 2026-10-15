@@ -527,6 +527,9 @@ export function TodayMode() {
               <Kbd k="-" size="xs" />
               <Kbd k="=" size="xs" /> change time
             </span>
+            <span>
+              <Kbd k="shift+5" size="xs" /> archive
+            </span>
           </p>
         )}
       </div>

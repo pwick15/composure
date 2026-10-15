@@ -246,9 +246,7 @@ describe('today', () => {
     a.cycleMode(1)
     expect(getState().mode).toBe('today')
     a.cycleMode(1)
-    expect(getState().mode).toBe('archive')
-    a.cycleMode(1)
-    expect(getState().mode).toBe('archive')
+    expect(getState().mode).toBe('today') // the Archive is not a stop on the way
   })
 })
 
@@ -955,5 +953,17 @@ describe('archive', () => {
     expect(task('a').done).toBe(true)
     expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['a'])
     expect(todayList(getState().items, tomorrow()).map((i) => i.text)).toEqual([])
+  })
+
+  it('Back returns to the screen the Archive was opened from', () => {
+    a.setMode('plan')
+    a.setMode('archive')
+    expect(getState().archiveFrom).toBe('plan')
+    a.archiveBack()
+    expect(getState().mode).toBe('plan')
+    a.setMode('today')
+    a.setMode('archive')
+    a.cycleMode(1) // ⌥→ also leaves rather than wandering into another screen
+    expect(getState().mode).toBe('today')
   })
 })

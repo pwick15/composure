@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { addDays, todayKey } from '../lib/dates'
 import type { Item } from '../lib/types'
 import { getState, setState, useStore } from '../state/store'
+import { buildSections } from '../lib/palette'
 import { FocusPill } from '../components/FocusPill'
 import { ArchiveMode } from './ArchiveMode'
 import { DumpMode } from './DumpMode'
@@ -147,5 +148,14 @@ describe('screens', () => {
     expect(archive).toContain('done last week')
     expect(archive).not.toContain('late but done')
     expect(archive).not.toContain('Overdue')
+  })
+
+  it('searching "archive" puts Open archive first, from every screen', () => {
+    for (const mode of ['dump', 'sort', 'plan', 'today', 'archive'] as const) {
+      for (const q of ['archive', 'arch', 'Archive']) {
+        const first = buildSections(q, mode, [{ ...base, id: 'x', text: 'archive the old files' }])[0].rows[0]
+        expect(first.kind === 'command' && first.cmd.id).toBe('mode.archive')
+      }
+    }
   })
 })

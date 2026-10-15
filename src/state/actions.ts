@@ -327,16 +327,19 @@ function resetCursors() {
 
 // ---------------------------------------------------------------- modes
 
-const MODES: Mode[] = ['dump', 'sort', 'plan', 'today', 'archive']
+// The Archive is off to the side: it isn't one of the screens ⌥←/⌥→ step through.
+const MODES: Mode[] = ['dump', 'sort', 'plan', 'today']
 
 export function setMode(mode: Mode) {
-  if (get().mode === mode) return
-  set({ mode })
+  const from = get().mode
+  if (from === mode) return
+  set(mode === 'archive' ? { mode, archiveFrom: from } : { mode })
   resetCursors()
 }
 
 /** ⌥←/⌥→: step to the neighbouring screen, stopping at the ends like pages. */
 export function cycleMode(dir: -1 | 1) {
+  if (get().mode === 'archive') return archiveBack()
   const i = MODES.indexOf(get().mode)
   const next = MODES[i + dir]
   if (next) setMode(next)
@@ -1077,6 +1080,12 @@ export function todayMoveSession(dir: -1 | 1) {
 export function archiveCurrent(): Item | null {
   const s = get()
   return findItem(resolveArchiveCursor(s.items, s.archiveCursor, todayKey())) ?? null
+}
+
+/** ⌫ / esc: back to the screen the Archive was opened from. */
+export function archiveBack() {
+  const { archiveFrom } = get()
+  setMode(archiveFrom === 'archive' ? 'dump' : archiveFrom)
 }
 
 export function archiveFocus(id: string) {

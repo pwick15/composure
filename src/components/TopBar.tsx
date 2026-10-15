@@ -2,7 +2,7 @@ import { motion } from 'motion/react'
 import { useMemo } from 'react'
 import { todayKey } from '../lib/dates'
 import { keepFocus, SNAP } from '../lib/motion'
-import { archiveOrder, live, planQueue, todayList } from '../lib/selectors'
+import { live, planQueue, todayList } from '../lib/selectors'
 import { leaves } from '../lib/tree'
 import type { Mode } from '../lib/types'
 import { openPalette, setMode, toggleHelp } from '../state/actions'
@@ -10,12 +10,12 @@ import { useStore } from '../state/store'
 import { FocusPill } from './FocusPill'
 import { Kbd } from './Kbd'
 
+// The Archive is not a tab: reach it with ⇧5 or by searching for it, and ⌫ comes back.
 const TABS: { mode: Mode; label: string; key: string }[] = [
   { mode: 'dump', label: 'Dump', key: 'shift+1' },
   { mode: 'sort', label: 'Sort', key: 'shift+2' },
   { mode: 'plan', label: 'Plan', key: 'shift+3' },
   { mode: 'today', label: 'Today', key: 'shift+4' },
-  { mode: 'archive', label: 'Archive', key: 'shift+5' },
 ]
 
 export function TopBar() {
@@ -29,13 +29,11 @@ export function TopBar() {
     const unplanned = planQueue(items, key).length
     const today = todayList(items, key)
     const open = today.filter((i) => !i.done).length
-    const archived = archiveOrder(items, key).length
     return {
       dump: kept.length ? String(kept.length) : '',
       sort: kept.length ? (unsorted ? `${unsorted} left` : '✓') : '',
       plan: kept.length ? (unplanned ? `${unplanned} left` : '✓') : '',
       today: today.length ? (open ? `${open} left` : '✓') : '',
-      archive: archived ? String(archived) : '',
     }
   }, [items])
 
@@ -62,7 +60,7 @@ export function TopBar() {
               {active && <motion.span layoutId="tab-bg" className="tab__bg" transition={SNAP} />}
               <Kbd k={t.key} size="xs" className="tab__key" />
               <span className="tab__label">{t.label}</span>
-              {counts[t.mode] && <span className="tab__count">{counts[t.mode]}</span>}
+              {counts[t.mode as keyof typeof counts] && <span className="tab__count">{counts[t.mode as keyof typeof counts]}</span>}
             </button>
           )
         })}

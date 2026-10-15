@@ -78,7 +78,7 @@ function hintsFor(s: State): Hint[] {
   }
 
   if (s.mode === 'archive')
-    return [h('x', 'reopen'), h('mod+backspace', 'delete'), h(['up', 'down'], 'move'), h('shift+4', 'today')]
+    return [h('backspace', 'back'), h('x', 'reopen'), h('mod+backspace', 'delete'), h(['up', 'down'], 'move')]
 
   if (s.trayEditing) return [h('enter', 'save'), h('escape', 'cancel')]
 

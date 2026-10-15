@@ -620,3 +620,7 @@
 .focus-pill[data-over] .focus-pill__ring circle + circle {
   stroke: var(--q-do);
 }
+
+.archive-back {
+  margin-bottom: 18px;
+}
