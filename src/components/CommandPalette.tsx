@@ -92,7 +92,7 @@ function Palette() {
       if (row) runRow(row)
       return
     }
-    if (e.key === 'Escape' || (mod && e.key.toLowerCase() === 'k') || (e.key === 'Backspace' && !query)) {
+    if (e.key === 'Escape' || (mod && e.key.toLowerCase() === 'f') || (e.key === 'Backspace' && !query)) {
       e.preventDefault()
       pulse(comboId(eventCombo(native)))
       closePalette()

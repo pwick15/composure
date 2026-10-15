@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { todayKey } from '../lib/dates'
 import type { Run } from '../lib/session'
-import type { Item, Mode, Quadrant, Theme } from '../lib/types'
+import type { Item, Mode, Quadrant, Slot, Theme } from '../lib/types'
 
 export type Editing =
   | { kind: 'item'; id: string; caret: 'start' | 'end' }
@@ -69,6 +69,8 @@ export interface State {
 
   // overlays
   palette: { open: boolean; seed: string; nonce: number }
+  /** The "when" picker, while it's open: the thought (and its open subtasks) it will give a day to. */
+  when: { ids: string[]; text: string; current: Slot | null } | null
   helpOpen: boolean
   toasts: Toast[]
 
@@ -100,6 +102,7 @@ export const useStore = create<State>()(
         run: null,
 
         palette: { open: false, seed: '', nonce: 0 },
+        when: null,
         helpOpen: false,
         toasts: [],
 

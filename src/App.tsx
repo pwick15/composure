@@ -1,6 +1,7 @@
 import { motion, MotionConfig } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { CommandPalette } from './components/CommandPalette'
+import { WhenPicker } from './components/WhenPicker'
 import { KeystrokeHUD } from './components/KeystrokeHUD'
 import { SessionDriver } from './components/SessionDriver'
 import { ShortcutSheet } from './components/ShortcutSheet'
@@ -58,6 +59,7 @@ export default function App() {
         <SessionDriver />
         <Toasts />
         <CommandPalette />
+        <WhenPicker />
         <ShortcutSheet />
       </div>
     </MotionConfig>

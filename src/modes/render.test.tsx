@@ -6,6 +6,7 @@ import type { Item } from '../lib/types'
 import { getState, setState, useStore } from '../state/store'
 import { buildSections } from '../lib/palette'
 import { FocusPill } from '../components/FocusPill'
+import { WhenPicker } from '../components/WhenPicker'
 import { ArchiveMode } from './ArchiveMode'
 import { DumpMode } from './DumpMode'
 import { PlanMode } from './PlanMode'
@@ -161,5 +162,15 @@ describe('screens', () => {
         expect(first.kind === 'command' && first.cmd.id).toBe('mode.archive')
       }
     }
+  })
+
+  it('the When picker shows the thought and the usual picks', () => {
+    const when = { ids: ['a'], text: 'call dentist', current: null }
+    Object.assign(snapshot, { when })
+    setState({ when })
+    const html = render(<WhenPicker />)
+    expect(html).toContain('call dentist')
+    for (const pick of ['Today', 'Tomorrow', 'Later']) expect(html).toContain(pick)
+    expect(html).not.toContain('No day') // nothing to clear yet
   })
 })

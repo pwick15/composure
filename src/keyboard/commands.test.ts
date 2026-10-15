@@ -36,3 +36,18 @@ describe('findCommand', () => {
     }
   })
 })
+
+describe('mod+S', () => {
+  it('sets the day on every screen and while typing, so the browser never offers to save the page', () => {
+    const modS = key({ key: 's', code: 'KeyS', ...mod })
+    for (const m of MODES) {
+      expect(findCommand(modS, m, false)?.id).toBe('task.when')
+      expect(findCommand(modS, m, true)?.id).toBe('task.when')
+    }
+  })
+
+  it('export moved to mod+shift+S', () => {
+    const modShiftS = key({ key: 'S', code: 'KeyS', shiftKey: true, ...mod })
+    expect(findCommand(modShiftS, 'dump', false)?.id).toBe('data.export')
+  })
+})

@@ -16,7 +16,7 @@ function onKeyDown(e: KeyboardEvent) {
 
   const s = getState()
   // The palette input owns the keyboard while it is open.
-  if (s.palette.open) return
+  if (s.palette.open || s.when) return
 
   if (s.helpOpen) {
     if (e.key === 'Escape' || e.key === '?') {

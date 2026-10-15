@@ -34,6 +34,7 @@ function hintsFor(s: State): Hint[] {
         h('backspace', 'delete'),
         h(['shift+up', 'shift+down'], 'reorder'),
         h('mod+k', 'done'),
+        h('mod+s', 'when'),
         h('escape', 'deselect'),
       ]
     return [
@@ -71,6 +72,7 @@ function hintsFor(s: State): Hint[] {
       h('n', 'add'),
       h(['up', 'down'], 'move'),
       h('mod+k', 'done'),
+      h('mod+s', 'when'),
       h(['shift+left', 'shift+right'], 'session'),
       h(['-', '='], 'time'),
       h('t', 'not today'),
@@ -93,6 +95,7 @@ function hintsFor(s: State): Hint[] {
       h('⇧ + arrows', 'move it', true),
       h('backspace', 'back'),
       h('e', 'edit'),
+      h('mod+s', 'when'),
       h('mod+k', 'done'),
     ]
   }
@@ -108,6 +111,7 @@ function hintsFor(s: State): Hint[] {
     h(['left', 'right'], 'days'),
     h('⇧ + arrows', 'move it', true),
     h('backspace', 'back'),
+    h('mod+s', 'when'),
     h('mod+k', 'done'),
   ]
 }

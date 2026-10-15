@@ -1,4 +1,4 @@
-import { addDays, columnFor, planColumns, todayKey } from '../lib/dates'
+import { addDays, columnFor, planColumns, slotLabel, todayKey } from '../lib/dates'
 import { mergeItems } from '../lib/export'
 import { askForNotifications, notificationsBlocked, notify } from '../lib/notify'
 import { fmt, PRESETS, stepMinutes } from '../lib/duration'
@@ -21,7 +21,7 @@ import {
   todaySessions,
 } from '../lib/selectors'
 import { childrenOf, draftIndex, isDone, lastInBlock, parentKey, treeOrder } from '../lib/tree'
-import type { Item, Mode, Quadrant } from '../lib/types'
+import type { Item, Mode, Quadrant, Slot } from '../lib/types'
 import { type Deck, type Editing, freshDeck, getState as get, setState as set, type State, type TrayExit } from './store'
 
 export type EditTarget = Exclude<Editing, null>
@@ -1175,6 +1175,56 @@ export function archiveDelete() {
   removeItem(t.cur.id)
   set({ archiveCursor: t.after })
   toast(`Deleted "${truncate(t.cur.text)}"`, 'mod+z')
+}
+
+// ---------------------------------------------------------------- when
+//
+// ⌘S on any screen gives the selected thought a day: type "tue", "in 2 days" or "24/12" and ↵
+// (see lib/when.ts). A thought with subtasks gives them all the day, like ticking it off does.
+
+/** The thought each screen has selected, if there is one to give a day to. */
+function whenSubject(): Item | null {
+  const { mode, selectedId } = get()
+  if (mode === 'dump') return findItem(selectedId) ?? null
+  if (mode === 'today') return todayCurrent()
+  if (mode === 'archive') return null
+  return trayCurrent()
+}
+
+export function whenOpen() {
+  const s = get()
+  if (s.when) return
+  if (s.todayAdd || s.trayEditing || s.editing?.kind === 'draft') return toast('Finish typing first')
+  const item = whenSubject()
+  if (!item) return toast(s.mode === 'archive' ? 'Reopen it first' : 'Select a thought first')
+  const kids = childrenOf(s.items, item.id).filter((k) => !k.done)
+  set({ when: { ids: [item.id, ...kids.map((k) => k.id)], text: item.text, current: item.slot } })
+}
+
+export function whenClose() {
+  if (get().when) set({ when: null })
+}
+
+/** Gives the thought that day (or none) at once. In Plan it files it like 1–8 do, so ⌫ brings it back. */
+export function whenApply(slot: Slot | null) {
+  const w = get().when
+  if (!w) return
+  set({ when: null })
+  const cur = findItem(w.ids[0])
+  if (!cur) return
+  const today = todayKey()
+  const mode = get().mode
+  if (mode === 'plan' && cur.id === planCurrent()?.id && w.ids.length === 1) deckFile('plan', slot)
+  else {
+    const list = mode === 'today' ? todayList(get().items, today) : []
+    const i = list.findIndex((it) => it.id === cur.id)
+    transact(() => w.ids.forEach((id) => patch(id, { slot })))
+    if (mode === 'today' && slot !== today) {
+      set({ todayCursor: (list[i + 1] ?? list[i - 1])?.id ?? null })
+      sessionSync()
+    }
+  }
+  toast(`"${truncate(cur.text, 24)}" → ${slot === null ? 'no day' : slotLabel(slot, today)}`, 'mod+z')
 }
 
 // ---------------------------------------------------------------- navigation

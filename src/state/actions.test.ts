@@ -1020,3 +1020,70 @@ describe('the same keys on every screen', () => {
     expect(texts()).toEqual(['c', 'd'])
   })
 })
+
+describe('when', () => {
+  const task = (text: string) => getState().items.find((i) => i.text === text)!
+
+  it('⌘S then a phrase gives the selected thought that day, and ⌘Z undoes it', () => {
+    dump('a', 'b')
+    setState({ selectedId: task('a').id })
+    a.whenOpen()
+    expect(getState().when).toMatchObject({ text: 'a' })
+    a.whenApply(addDays(todayKey(), 3))
+    expect(getState().when).toBeNull()
+    expect(task('a').slot).toBe(addDays(todayKey(), 3))
+    expect(getState().toasts.at(-1)?.text).toContain('a')
+    a.undo()
+    expect(task('a').slot).toBeNull()
+  })
+
+  it('gives a thought with subtasks\' open subtasks the day too', () => {
+    dump('trip', 'flights', 'hotel')
+    setState({ items: getState().items.map((i) => (i.text === 'trip' ? i : { ...i, parentId: task('trip').id })) })
+    setState({ selectedId: task('trip').id })
+    a.whenOpen()
+    a.whenApply(todayKey())
+    expect(getState().items.map((i) => i.slot)).toEqual([todayKey(), todayKey(), todayKey()])
+  })
+
+  it('in Plan it files the card and moves on, like 1–8', () => {
+    dump('a', 'b')
+    a.setMode('plan')
+    a.whenOpen()
+    a.whenApply(addDays(todayKey(), 2))
+    expect(task('a').slot).toBe(addDays(todayKey(), 2))
+    expect(a.planCurrent()?.text).toBe('b')
+  })
+
+  it('in Today, a task given another day leaves and the next one is selected', () => {
+    dump('a', 'b')
+    setState({ items: getState().items.map((i) => ({ ...i, slot: todayKey() })) })
+    a.setMode('today')
+    a.todayFocus(task('a').id)
+    a.whenOpen()
+    a.whenApply(addDays(todayKey(), 1))
+    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['b'])
+    expect(getState().todayCursor).toBe(task('b').id)
+  })
+
+  it('"no day" clears it', () => {
+    dump('a')
+    setState({ items: getState().items.map((i) => ({ ...i, slot: todayKey() })), selectedId: task('a').id })
+    a.whenOpen()
+    a.whenApply(null)
+    expect(task('a').slot).toBeNull()
+  })
+
+  it('has nothing to do without a selection, in the Archive, or while a line is being typed', () => {
+    a.whenOpen()
+    expect(getState().when).toBeNull()
+    dump('a')
+    a.setMode('archive')
+    a.whenOpen()
+    expect(getState().when).toBeNull()
+    a.setMode('today')
+    a.todayAddOpen()
+    a.whenOpen()
+    expect(getState().when).toBeNull()
+  })
+})

@@ -249,3 +249,34 @@
   line-height: 1.6;
   color: var(--text-2);
 }
+
+/* ------------------------------------------------------------------ when */
+
+.when__task {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 12px 14px 0;
+  min-width: 0;
+}
+
+.when__text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+}
+
+.prow__hint {
+  flex: none;
+  font: 12px var(--font-mono);
+  color: var(--text-3);
+}
+
+.when__none {
+  padding: 18px 10px;
+  color: var(--text-3);
+  font-size: 13px;
+}
