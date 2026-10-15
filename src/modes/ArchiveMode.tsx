@@ -101,18 +101,6 @@ export function ArchiveMode() {
                 {nodes}
               </AnimatePresence>
             </ol>
-            <p className="today-keys">
-              <span>
-                <Kbd k="x" size="xs" /> reopen
-              </span>
-              <span>
-                <Kbd k="mod+backspace" size="xs" /> delete
-              </span>
-              <span>
-                <Kbd k="up" size="xs" />
-                <Kbd k="down" size="xs" /> move
-              </span>
-            </p>
           </>
         )}
       </div>

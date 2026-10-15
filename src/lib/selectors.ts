@@ -188,16 +188,6 @@ export function todayProgress(all: Item[], today: string): { done: number; total
   return { done, total: done + todayList(all, today).length }
 }
 
-/** The numbers that show how much lighter things are: total out of your head, let go, and on today. */
-export function clarity(items: Item[], today: string) {
-  const list = todayList(items, today)
-  return {
-    total: items.length,
-    dropped: leaves(items).filter((i) => i.quadrant === 'drop').length,
-    today: list.length,
-  }
-}
-
 /** Time still to go today. A task with no estimate counts as a default-length one, as a session would. */
 export function timeLeft(items: Item[], today: string) {
   const open = todayList(items, today)

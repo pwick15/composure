@@ -298,21 +298,19 @@
 
 /* ------------------------------------------------------------------ today */
 
-.clarity {
+.time-left {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 16px;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 10px;
   font: 12px/1.4 var(--font-mono);
   color: var(--text-3);
 }
 
-.clarity b {
+.time-left b {
   color: var(--text);
   font-weight: 600;
-}
-
-.tray-empty .clarity {
-  justify-content: center;
 }
 
 .today-progress {
@@ -349,21 +347,6 @@
   border-color: var(--accent);
 }
 
-.today-keys {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  margin-top: 14px;
-  font: 12px var(--font-mono);
-  color: var(--text-3);
-}
-
-.today-keys > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
 .dump-empty--static {
   cursor: default;
 }
@@ -372,17 +355,6 @@
 
 .tag--time {
   color: var(--text-2);
-}
-
-.clarity--time {
-  margin-top: 10px;
-  align-items: center;
-}
-
-.clarity--time .clarity__muted {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 /* ------------------------------------------------------------------ add on Today */

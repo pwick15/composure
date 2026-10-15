@@ -10,7 +10,6 @@ import { DEFAULT_FOCUS, fmt } from '../lib/duration'
 import { EXIT_FAST, keepFocus, SPRING } from '../lib/motion'
 import { QUADRANT_BY_ID } from '../lib/quadrants'
 import {
-  clarity,
   openInSession,
   resolveTodayCursor,
   timeLeft,
@@ -41,27 +40,6 @@ import {
 } from '../state/actions'
 import { useStore } from '../state/store'
 
-/** "14 out of your head · 4 let go · 3 for today": how much lighter things got. */
-export function ClarityLine({ items }: { items: Parameters<typeof clarity>[0] }) {
-  const c = clarity(items, todayKey())
-  if (!c.total) return null
-  return (
-    <p className="clarity">
-      <span>
-        <b>{c.total}</b> out of your head
-      </span>
-      {c.dropped > 0 && (
-        <span>
-          <b>{c.dropped}</b> let go
-        </span>
-      )}
-      <span>
-        <b>{c.today}</b> for today
-      </span>
-    </p>
-  )
-}
-
 /** Minutes → "52m" / "1h 5m", rounding up so a running clock never shows 0 early. */
 const minutesLabel = (ms: number) => fmt(Math.max(1, Math.ceil(ms / 60_000)))
 
@@ -81,34 +59,34 @@ function SessionSummary({ items, today }: { items: Item[]; today: string }) {
     ms = remainingMs(run, items, sessionOpen, now) + elsewhere.reduce((n, i) => n + effMinutes(i), 0) * 60_000
   }
   const doneBy = clockTime(now + ms)
+  // A task with no estimate is a guess, so say so rather than pretend to know.
+  const guess = left.unestimated > 0
+  const approx = guess ? '~' : ''
 
   return (
-    <p className="clarity clarity--time">
+    <p
+      className="time-left"
+      title={guess ? `${left.unestimated} without a time, counted as ${fmt(DEFAULT_FOCUS)} each. - and = set one.` : undefined}
+    >
       <span>
-        <b>{minutesLabel(ms)}</b> left
+        <b>
+          {approx}
+          {minutesLabel(ms)}
+        </b>{' '}
+        left
       </span>
-      {run?.phase === 'running' && (
-        <span>
-          done by <b>{doneBy}</b>
-        </span>
-      )}
-      {run?.phase === 'over' && (
-        <span>
-          carry on and you're done by <b>{doneBy}</b>
-        </span>
-      )}
+      <span>
+        done by 
+        <b>
+          {approx}
+          {doneBy}
+        </b>
+        {run?.phase === 'over' && ' if you carry on'}
+      </span>
       {!run && (
-        <span>
-          <button className="linkish" onMouseDown={keepFocus} onClick={sessionStart}>
-            start now
-          </button>{' '}
-          and you're done by <b>{doneBy}</b> <Kbd k="f" size="xs" />
-        </span>
-      )}
-      {!run && left.unestimated > 0 && (
-        <span className="clarity__muted">
-          {left.unestimated} without a time, counted as {fmt(DEFAULT_FOCUS)} <Kbd k="=" size="xs" />
-        </span>
+        <button className="linkish" onMouseDown={keepFocus} onClick={sessionStart}>
+          start now
+        </button>
       )}
     </p>
   )
@@ -386,7 +364,6 @@ export function TodayMode() {
 
   const nodes = sessions.flatMap((group, g) => {
     const running = run?.session === group.session
-    const hasCursor = group.items.some((i) => i.id === currentId)
     const head = (
       <motion.li
         key={`session-${group.session}`}
@@ -403,11 +380,6 @@ export function TodayMode() {
         </span>
         <span className="session-head__right">
           {running && run?.phase === 'running' && <span className="session-head__live">running</span>}
-          {!run && hasCursor && (
-            <>
-              <Kbd k="f" size="xs" /> start
-            </>
-          )}
         </span>
       </motion.li>
     )
@@ -458,7 +430,6 @@ export function TodayMode() {
         <header className="dump__head">
           <div className="eyebrow">// today · {longDate(today)}</div>
           <h1>{allDone ? "Today's clear." : 'One thing at a time.'}</h1>
-          <ClarityLine items={items} />
         </header>
 
         {total > 0 && (
@@ -501,33 +472,6 @@ export function TodayMode() {
           </ol>
         )}
 
-        {list.length > 0 && (
-          <p className="today-keys">
-            <span>
-              <Kbd k="n" size="xs" /> add
-            </span>
-            <span>
-              <Kbd k="x" size="xs" /> done
-            </span>
-            <span>
-              <Kbd k="t" size="xs" /> not today
-            </span>
-            <span>
-              <Kbd k="f" size="xs" /> {run ? 'stop session' : 'start session'}
-            </span>
-            <span>
-              <Kbd k="shift+left" size="xs" />
-              <Kbd k="shift+right" size="xs" /> session
-            </span>
-            <span>
-              <Kbd k="-" size="xs" />
-              <Kbd k="=" size="xs" /> change time
-            </span>
-            <span>
-              <Kbd k="shift+5" size="xs" /> archive
-            </span>
-          </p>
-        )}
       </div>
     </div>
   )

@@ -13,7 +13,6 @@ import { leaves } from '../lib/tree'
 import type { Item } from '../lib/types'
 import { deckFile, deckFocus, setMode } from '../state/actions'
 import { useStore } from '../state/store'
-import { ClarityLine } from './TodayMode'
 
 interface QuadrantProps {
   meta: QuadrantMeta
@@ -128,7 +127,6 @@ export function SortMode() {
           items.length ? (
             <div className="tray-empty">
               <strong>Everything's sorted.</strong>
-              <ClarityLine items={all} />
               <span>
                 Now give the important ones a day.{' '}
                 <button className="cta cta--inline" onMouseDown={keepFocus} onClick={() => setMode('plan')}>

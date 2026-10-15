@@ -84,9 +84,10 @@ describe('screens', () => {
     expect(html).toContain('book flights')
     expect(html).toContain('~30m')
     // 30m flights + a default 25m for the rent without an estimate; the hotel is in the archive.
-    expect(html).toContain('55m</b> left')
+    expect(html).toContain('~55m</b> left') // a guess, since one task has no time
     expect(html).toContain('start now')
     expect(html).toContain('1 without a time, counted as 25m')
+    expect(html).not.toContain('out of your head')
     expect(html).toContain('Session 1')
     expect(html).not.toMatch(/row__text">Plan trip/)
   })
