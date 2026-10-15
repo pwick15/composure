@@ -46,7 +46,7 @@ function Sheet() {
             <div className="eyebrow">// keyboard</div>
             <h2>Everything has a key</h2>
             <p>
-              Can't remember one? <Kbd k="mod+k" size="xs" /> searches every command by name.
+              Can't remember one? <Kbd k="mod+f" size="xs" /> searches every command by name.
             </p>
           </div>
           <Kbd k="escape" size="md" />
@@ -69,7 +69,7 @@ function Sheet() {
             <h3 className="eyebrow">Export · Data · Settings</h3>
             <p className="sheet__note">
               Copying your plan, downloading a calendar file, sending to Things 3, backups and themes all live in
-              search. Press <Kbd k="mod+k" size="xs" /> and type what you want.
+              search. Press <Kbd k="mod+f" size="xs" /> and type what you want.
             </p>
           </section>
         </div>

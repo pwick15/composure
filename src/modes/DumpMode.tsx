@@ -79,8 +79,10 @@ function Editor({ target, initial }: { target: EditTarget; initial: string }) {
     }
     lastShift.current = 0
 
-    if (e.key === 'Enter' && mod && target.kind === 'item') {
+    // ⌘K ticks off the line being edited. On a line not saved yet there is nothing to tick.
+    if (e.code === 'KeyK' && mod && !e.shiftKey && !e.altKey) {
       e.preventDefault()
+      if (target.kind !== 'item') return
       feedback(native, 'Done')
       const id = target.id
       run(() => {
@@ -252,10 +254,10 @@ function EmptyState() {
         <span className="prompt-glyph">›</span>
         <span className="caret-block" />
       </span>
-      <span className="dump-empty__title">Start typing. Anything. Everything.</span>
+      <span className="dump-empty__title">Get it out of your head. Anything. Everything.</span>
       <span className="dump-empty__keys">
         <span>
-          <Kbd label="a–z" /> type a thought
+          <Kbd k="space" /> add a thought
         </span>
         <span>
           <Kbd k="enter" /> next line
@@ -264,7 +266,7 @@ function EmptyState() {
           <Kbd k="mod+v" /> paste a list
         </span>
         <span>
-          <Kbd k="?" /> shortcuts
+          <Kbd k="mod+f" /> search
         </span>
       </span>
     </motion.button>
@@ -322,7 +324,7 @@ export function DumpMode() {
           <div className="eyebrow">// brain dump</div>
           <h1>What's on your mind?</h1>
           <p className="lede">
-            Just type. <Kbd k="enter" size="xs" /> starts the next line. Don't sort, don't judge, get it out.
+            Press <Kbd k="space" size="xs" /> and type. <Kbd k="enter" size="xs" /> starts the next line. Don't sort, don't judge, get it out.
           </p>
         </header>
 
@@ -339,7 +341,7 @@ export function DumpMode() {
         {items.length > 0 && !editing && (
           <motion.div className="dump__foot" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <button className="add-line" onMouseDown={keepFocus} onClick={() => startDraft()}>
-              <span className="prompt-glyph">›</span> type anywhere to add more
+              <span className="prompt-glyph">›</span> add another <Kbd k="space" size="xs" />
             </button>
             {unsorted > 0 && (
               <button className="cta" onMouseDown={keepFocus} onClick={() => setMode('sort')}>

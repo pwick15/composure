@@ -33,14 +33,14 @@ function hintsFor(s: State): Hint[] {
         h(['tab', 'shift+tab'], 'nest'),
         h('backspace', 'delete'),
         h(['shift+up', 'shift+down'], 'reorder'),
-        h('mod+enter', 'done'),
+        h('mod+k', 'done'),
         h('escape', 'deselect'),
       ]
     return [
-      h('a–z', 'type to add', true),
+      h('space', 'add'),
       h(['up', 'down'], 'select'),
       h('alt+right', 'next screen'),
-      h('mod+k', 'search'),
+      h('mod+f', 'search'),
       h('?', 'shortcuts'),
     ]
   }
@@ -58,19 +58,19 @@ function hintsFor(s: State): Hint[] {
         : [h('enter', 'add'), h('down', 'options'), h('⇧ ⇧', 'done', true), h('escape', 'close')]
     if (s.run?.phase === 'over')
       return [
-        h('x', 'done'),
+        h('mod+k', 'done'),
         h(['-', '='], 'time needed'),
         h('enter', 'carry on'),
         h(['up', 'down'], 'move'),
         h('f', 'stop'),
       ]
     if (s.run)
-      return [h('x', 'done, next'), h(['-', '='], 'more / less time'), h(['up', 'down'], 'move'), h('f', 'stop session')]
+      return [h('mod+k', 'done, next'), h(['-', '='], 'more / less time'), h(['up', 'down'], 'move'), h('f', 'stop session')]
     return [
       h('f', 'start session'),
       h('n', 'add'),
       h(['up', 'down'], 'move'),
-      h('x', 'done'),
+      h('mod+k', 'done'),
       h(['shift+left', 'shift+right'], 'session'),
       h(['-', '='], 'time'),
       h('t', 'not today'),
@@ -78,13 +78,13 @@ function hintsFor(s: State): Hint[] {
   }
 
   if (s.mode === 'archive')
-    return [h('backspace', 'back'), h('x', 'reopen'), h('mod+backspace', 'delete'), h(['up', 'down'], 'move')]
+    return [h('backspace', 'back'), h('mod+k', 'reopen'), h('mod+backspace', 'delete'), h(['up', 'down'], 'move')]
 
   if (s.trayEditing) return [h('enter', 'save'), h('escape', 'cancel')]
 
   if (s.mode === 'sort') {
     if (!resolveSortCursor(s.items, s.decks.sort.cursor))
-      return [h('shift+3', 'plan'), h('backspace', 'back'), h(['up', 'down'], 'revisit'), h('mod+k', 'search')]
+      return [h('shift+3', 'plan'), h('backspace', 'back'), h(['up', 'down'], 'revisit'), h('mod+f', 'search')]
     return [
       h(['q', 'w', 'a', 's'], 'file'),
       h('1–6', 'time', true),
@@ -93,12 +93,12 @@ function hintsFor(s: State): Hint[] {
       h('⇧ + arrows', 'move it', true),
       h('backspace', 'back'),
       h('e', 'edit'),
-      h('x', 'done'),
+      h('mod+k', 'done'),
     ]
   }
 
   if (!resolvePlanCursor(s.items, s.decks.plan.cursor, todayKey()))
-    return [h('mod+k', 'export: search "copy" or "calendar"'), h('backspace', 'back'), h(['up', 'down'], 'revisit')]
+    return [h('mod+f', 'export: search "copy" or "calendar"'), h('backspace', 'back'), h(['up', 'down'], 'revisit')]
   return [
     h('1–7', 'day', true),
     h('8', 'later'),
@@ -108,7 +108,7 @@ function hintsFor(s: State): Hint[] {
     h(['left', 'right'], 'days'),
     h('⇧ + arrows', 'move it', true),
     h('backspace', 'back'),
-    h('x', 'done'),
+    h('mod+k', 'done'),
   ]
 }
 

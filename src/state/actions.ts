@@ -552,9 +552,14 @@ export function editorIndent(target: EditTarget, value: string, dir: 1 | -1) {
   })
 }
 
+/** Ticks off the selected thought and selects what was next to it (the thought leaves Dump for the Archive). */
 export function dumpToggleDone() {
   const { selectedId } = get()
-  if (selectedId) toggleDone(selectedId)
+  if (!selectedId) return toast('Select a thought first')
+  const { prev, next } = neighbours(selectedId)
+  toggleDone(selectedId)
+  const left = new Set(liveItems().map((i) => i.id))
+  set({ selectedId: [next, prev].find((id) => id !== null && left.has(id)) ?? null })
 }
 
 export function dumpEscape() {
@@ -766,15 +771,50 @@ export function trayCancel() {
   set({ trayEditing: null })
 }
 
-export function trayToggleDone() {
-  const cur = trayCurrent()
-  if (cur) toggleDone(cur.id)
+/**
+ * Runs `change`, which takes the selected thought out of the deck (done or deleted), then lands on
+ * what comes next: back where you left off if you wandered, else the next waiting thought, else
+ * its neighbour in the list.
+ */
+function leaveDeck(m: DeckMode, cur: Item, change: () => void) {
+  const queueBefore = groupsFor(m)[0]
+  const orderBefore = groupsFor(m).flat()
+  change()
+  const { resume } = get().decks[m]
+  let next: string | null
+  if (resume && resume !== cur.id && groupsFor(m)[0].some((i) => i.id === resume)) next = resume
+  else if (queueBefore.some((i) => i.id === cur.id)) next = nextInQueue(queueBefore, cur.id)
+  else {
+    const i = orderBefore.findIndex((it) => it.id === cur.id)
+    next = (orderBefore[i + 1] ?? orderBefore[i - 1])?.id ?? null
+  }
+  setDeck(m, { cursor: next, resume: null })
+  set({ trayExit: { x: 0, y: -1 }, trayEditing: null })
 }
 
-export function trayDelete() {
+// ---------------------------------------------------------------- the same keys on every screen
+//
+// ⌘K ticks the selected thing off (and reopens it in the Archive), ⌘⌫ deletes it. Each screen has
+// its own idea of "selected", so these look it up and hand over to the screen's own action.
+
+export function completeCurrent() {
+  const { mode } = get()
+  if (mode === 'dump') return dumpToggleDone()
+  if (mode === 'today') return todayToggle()
+  if (mode === 'archive') return archiveReopen()
   const cur = trayCurrent()
-  if (!cur) return
-  removeItem(cur.id)
+  if (!cur) return nothingHere(mode)
+  leaveDeck(mode, cur, () => toggleDone(cur.id))
+}
+
+export function deleteCurrent() {
+  const { mode } = get()
+  if (mode === 'dump') return dumpDelete()
+  if (mode === 'today') return todayDelete()
+  if (mode === 'archive') return archiveDelete()
+  const cur = trayCurrent()
+  if (!cur) return nothingHere(mode)
+  leaveDeck(mode, cur, () => removeItem(cur.id))
   toast(`Deleted "${truncate(cur.text)}"`, 'mod+z')
 }
 
@@ -839,6 +879,19 @@ export function todayToggle() {
   set({ todayCursor: next?.id ?? null })
   toast(next ? 'Done. Archived. Next up' : "Done. That's everything for today", 'mod+z')
   sessionSync() // a running session moves straight on to the next task
+}
+
+/** ⌘⌫: delete the selected task and move to the next one. */
+export function todayDelete() {
+  const cur = todayCurrent()
+  if (!cur) return nothingToday()
+  const list = todayList(get().items, todayKey())
+  const i = list.findIndex((it) => it.id === cur.id)
+  const next = list[i + 1] ?? list[i - 1]
+  removeItem(cur.id)
+  set({ todayCursor: next?.id ?? null })
+  toast(`Deleted "${truncate(cur.text)}"`, 'mod+z')
+  sessionSync()
 }
 
 /** T: not today. Moves it to tomorrow without guilt (and without losing it). */

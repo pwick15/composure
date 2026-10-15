@@ -73,7 +73,7 @@ export function TopBar() {
             <path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
           <span className="ghost-btn__label">Search</span>
-          <Kbd k="mod+k" size="xs" />
+          <Kbd k="mod+f" size="xs" />
         </button>
         <button className="ghost-btn ghost-btn--icon" onMouseDown={keepFocus} onClick={toggleHelp} aria-label="Keyboard shortcuts">
           <Kbd k="?" size="xs" />

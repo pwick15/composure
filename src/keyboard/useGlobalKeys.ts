@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { flushSync } from 'react-dom'
 import { splitLines } from '../lib/text'
-import { openPalette, pasteLines, startDraft, toggleHelp } from '../state/actions'
+import { openPalette, pasteLines, toggleHelp } from '../state/actions'
 import { importFile } from '../state/exporters'
 import { getState } from '../state/store'
 import { findCommand, hudOf } from './commands'
@@ -42,12 +42,8 @@ function onKeyDown(e: KeyboardEvent) {
   if (e.key === 'Tab') return e.preventDefault()
   if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return
 
-  if (s.mode === 'dump') {
-    // Type anywhere: the key becomes the first character of a new thought.
-    e.preventDefault()
-    flushSync(() => startDraft(e.key))
-  } else if (/[^\s\d]/.test(e.key)) {
-    // Things-style type travel: unbound letters open search, seeded with the key.
+  if (/[^\s\d]/.test(e.key)) {
+    // Things-style type travel, on every screen: unbound letters open search, seeded with the key.
     e.preventDefault()
     feedback(e, 'Search')
     flushSync(() => openPalette(e.key))

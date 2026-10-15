@@ -967,3 +967,56 @@ describe('archive', () => {
     expect(getState().mode).toBe('today')
   })
 })
+
+describe('the same keys on every screen', () => {
+  const task = (text: string) => getState().items.find((i) => i.text === text)!
+  const done = () => getState().items.filter((i) => i.done).map((i) => i.text)
+
+  it('⌘K ticks off the selected thought in Dump and selects its neighbour', () => {
+    dump('a', 'b', 'c')
+    setState({ selectedId: task('b').id })
+    a.completeCurrent()
+    expect(done()).toEqual(['b'])
+    expect(getState().selectedId).toBe(task('c').id)
+  })
+
+  it('⌘K in Sort and Plan ticks off the card and moves to the next waiting one', () => {
+    for (const mode of ['sort', 'plan'] as const) {
+      setState(initial, true)
+      dump('a', 'b', 'c')
+      a.setMode(mode)
+      a.completeCurrent()
+      expect(done()).toEqual(['a'])
+      expect(mode === 'sort' ? a.sortCurrent()?.text : a.planCurrent()?.text).toBe('b')
+    }
+  })
+
+  it('⌘K in Today ticks off, and in the Archive reopens', () => {
+    dump('a', 'b')
+    setState({ items: getState().items.map((i) => ({ ...i, slot: todayKey() })) })
+    a.setMode('today')
+    a.completeCurrent()
+    expect(done()).toEqual(['a'])
+    a.setMode('archive')
+    a.completeCurrent()
+    expect(done()).toEqual([])
+  })
+
+  it('⌘⌫ deletes the selected thing on every screen and moves on', () => {
+    dump('a', 'b', 'c', 'd')
+    setState({ selectedId: task('a').id })
+    a.deleteCurrent()
+    expect(texts()).toEqual(['b', 'c', 'd'])
+    a.setMode('sort')
+    a.deleteCurrent()
+    expect(texts()).toEqual(['c', 'd'])
+    expect(a.sortCurrent()?.text).toBe('c')
+    setState({ items: getState().items.map((i) => ({ ...i, slot: todayKey() })) })
+    a.setMode('today')
+    a.deleteCurrent()
+    expect(texts()).toEqual(['d'])
+    expect(a.todayCurrent()?.text).toBe('d')
+    a.undo()
+    expect(texts()).toEqual(['c', 'd'])
+  })
+})

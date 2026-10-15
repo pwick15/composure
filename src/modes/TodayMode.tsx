@@ -111,7 +111,7 @@ function SessionPanel({ items, today }: { items: Item[]; today: string }) {
           <span className="session__clock">{clock(0)}</span>
         </div>
         <p className="session__lede">
-          <b>{left.length}</b> not finished. Tick off what you did <Kbd k="x" size="xs" />, give the rest the time they
+          <b>{left.length}</b> not finished. Tick off what you did <Kbd k="mod+k" size="xs" />, give the rest the time they
           still need <Kbd k="-" size="xs" />
           <Kbd k="=" size="xs" />, then carry on <Kbd k="enter" size="xs" />.
         </p>
@@ -165,7 +165,7 @@ function SessionPanel({ items, today }: { items: Item[]; today: string }) {
       </p>
       <p className="session__keys">
         <span>
-          <Kbd k="x" size="xs" /> done, next
+          <Kbd k="mod+k" size="xs" /> done, next
         </span>
         <span>
           <Kbd k="=" size="xs" /> more time

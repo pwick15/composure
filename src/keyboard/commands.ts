@@ -4,6 +4,7 @@ import { QUADRANTS } from '../lib/quadrants'
 import type { Mode } from '../lib/types'
 import * as a from '../state/actions'
 import * as x from '../state/exporters'
+import { getState } from '../state/store'
 import { parseCombo, matchCombo } from './keys'
 
 export type Group = 'Modes' | 'General' | 'Dump' | 'Sort' | 'Plan' | 'Today' | 'Archive' | 'Export' | 'Data' | 'Settings'
@@ -115,7 +116,7 @@ export const COMMANDS: Command[] = [
     title: 'Search commands and thoughts',
     hud: 'Search',
     group: 'General',
-    keys: ['mod+k'],
+    keys: ['mod+f'],
     inInput: true,
     palette: false,
     run: () => a.openPalette(),
@@ -131,6 +132,24 @@ export const COMMANDS: Command[] = [
   },
   { id: 'undo', title: 'Undo', group: 'General', keys: ['mod+z'], repeat: true, run: a.undo },
   { id: 'redo', title: 'Redo', group: 'General', keys: ['mod+shift+z', 'mod+y'], repeat: true, run: a.redo },
+  {
+    id: 'task.done',
+    title: 'Mark done (reopen, in the Archive)',
+    hud: () => (getState().mode === 'archive' ? 'Reopen' : 'Done'),
+    group: 'General',
+    keys: ['mod+k'],
+    keywords: 'complete tick finish check off archive reopen undone',
+    run: a.completeCurrent,
+  },
+  {
+    id: 'task.delete',
+    title: 'Delete the selected thought',
+    hud: 'Delete',
+    group: 'General',
+    keys: ['mod+backspace'],
+    keywords: 'remove trash',
+    run: a.deleteCurrent,
+  },
 
   // ------------------------------------------------------------ dump
   {
@@ -215,15 +234,6 @@ export const COMMANDS: Command[] = [
     keys: ['shift+down', 'alt+down'],
     repeat: true,
     run: () => a.dumpMove(1),
-  },
-  {
-    id: 'dump.done',
-    title: 'Toggle done',
-    hud: 'Done',
-    group: 'Dump',
-    scope: 'dump',
-    keys: ['mod+enter'],
-    run: a.dumpToggleDone,
   },
   {
     id: 'dump.delete',
@@ -382,16 +392,6 @@ export const COMMANDS: Command[] = [
         run: () => a.deckKeep(m),
       },
       { id: `${m}.edit`, title: 'Edit text', hud: 'Edit', group, scope: m, keys: ['e'], run: a.trayEdit },
-      { id: `${m}.done`, title: 'Toggle done', hud: 'Done', group, scope: m, keys: ['x'], run: a.trayToggleDone },
-      {
-        id: `${m}.delete`,
-        title: 'Delete thought',
-        hud: 'Delete',
-        group,
-        scope: m,
-        keys: ['mod+backspace'],
-        run: a.trayDelete,
-      },
     ]
   }),
 
@@ -453,15 +453,6 @@ export const COMMANDS: Command[] = [
   },
 
   // ------------------------------------------------------------ today
-  {
-    id: 'today.done',
-    title: 'Tick off, next',
-    hud: 'Done',
-    group: 'Today',
-    scope: 'today',
-    keys: ['x', 'space'],
-    run: a.todayToggle,
-  },
   {
     id: 'today.add',
     title: 'Add a task to today',
@@ -557,25 +548,6 @@ export const COMMANDS: Command[] = [
     keys: ['backspace', 'escape'],
     keywords: 'close leave exit return',
     run: a.archiveBack,
-  },
-  {
-    id: 'archive.reopen',
-    title: 'Reopen',
-    hud: 'Reopen',
-    group: 'Archive',
-    scope: 'archive',
-    keys: ['x'],
-    keywords: 'undo done restore unarchive not finished',
-    run: a.archiveReopen,
-  },
-  {
-    id: 'archive.delete',
-    title: 'Delete from the archive',
-    hud: 'Delete',
-    group: 'Archive',
-    scope: 'archive',
-    keys: ['mod+backspace'],
-    run: a.archiveDelete,
   },
   {
     id: 'archive.down',
@@ -689,10 +661,9 @@ export interface SheetHint {
 }
 
 export const SHEET_HINTS: SheetHint[] = [
-  { group: 'General', title: 'Start typing in Sort or Plan to search', keys: ['a–z'], literal: true },
+  { group: 'General', title: 'Start typing on any screen to search', keys: ['a–z'], literal: true },
   { group: 'General', title: 'Paste a list: one thought per line', keys: ['mod+v'] },
   { group: 'Modes', title: 'Previous / next screen', keys: ['alt+left', 'alt+right'] },
-  { group: 'Dump', title: 'Start typing anywhere to add', keys: ['a–z'], literal: true },
   { group: 'Dump', title: 'While typing: save and start the next', keys: ['enter'] },
   { group: 'Dump', title: 'While typing: nest / un-nest this line', keys: ['tab', 'shift+tab'] },
   { group: 'Dump', title: 'While typing: save, then a subtask under it', keys: ['alt+enter'] },
