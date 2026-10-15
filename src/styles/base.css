@@ -164,11 +164,6 @@ input:focus-visible {
   border-color: color-mix(in srgb, var(--q-do) 40%, var(--line));
 }
 
-.tag--done {
-  color: var(--accent-fg);
-  border-color: color-mix(in srgb, var(--accent-fg) 40%, var(--line));
-}
-
 /* ------------------------------------------------------------------ buttons */
 
 .cta {

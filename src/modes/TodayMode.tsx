@@ -15,6 +15,7 @@ import {
   resolveTodayCursor,
   timeLeft,
   todayList,
+  todayProgress,
   todaySessions,
 } from '../lib/selectors'
 import { activeId, clock, effMinutes, leftovers, remainingMs, windowOf } from '../lib/session'
@@ -76,7 +77,7 @@ function SessionSummary({ items, today }: { items: Item[]; today: string }) {
   let ms = left.minutes * 60_000
   if (run?.phase === 'running') {
     const sessionOpen = new Set(openInSession(items, today, run.session).map((i) => i.id))
-    const elsewhere = todayList(items, today).filter((i) => !i.done && !run.queue.includes(i.id))
+    const elsewhere = todayList(items, today).filter((i) => !run.queue.includes(i.id))
     ms = remainingMs(run, items, sessionOpen, now) + elsewhere.reduce((n, i) => n + effMinutes(i), 0) * 60_000
   }
   const doneBy = clockTime(now + ms)
@@ -374,16 +375,16 @@ export function TodayMode() {
 
   const list = useMemo(() => todayList(items, today), [items, today])
   const currentId = resolveTodayCursor(items, cursor, today)
-  const done = list.filter((i) => i.done).length
-  const allDone = list.length > 0 && done === list.length
+  const { done, total } = useMemo(() => todayProgress(items, today), [items, today])
+  const allDone = total > 0 && list.length === 0
   const sessions = useMemo(() => todaySessions(items, today), [items, today])
   const active = run ? activeId(run) : null
   // Tasks whose window closed while still open, and (once time is up) everything left to finish.
-  const overtime = new Set(run && run.phase === 'running' ? run.queue.slice(0, run.index).filter((id) => list.some((i) => i.id === id && !i.done)) : [])
-  const leftSet = new Set(run?.phase === 'over' ? run.queue.filter((id) => list.some((i) => i.id === id && !i.done)) : [])
+  const inList = (id: string) => list.some((i) => i.id === id)
+  const overtime = new Set(run && run.phase === 'running' ? run.queue.slice(0, run.index).filter(inList) : [])
+  const leftSet = new Set(run?.phase === 'over' ? run.queue.filter(inList) : [])
 
   const nodes = sessions.flatMap((group, g) => {
-    const open = group.items.filter((i) => !i.done)
     const running = run?.session === group.session
     const hasCursor = group.items.some((i) => i.id === currentId)
     const head = (
@@ -398,11 +399,11 @@ export function TodayMode() {
       >
         <span className="session-head__name">Session {g + 1}</span>
         <span className="session-head__meta">
-          {open.length ? `${open.length} open · ${fmt(open.reduce((n, i) => n + effMinutes(i), 0))}` : 'all done'}
+          {group.items.length} open · {fmt(group.items.reduce((n, i) => n + effMinutes(i), 0))}
         </span>
         <span className="session-head__right">
           {running && run?.phase === 'running' && <span className="session-head__live">running</span>}
-          {!run && hasCursor && open.length > 0 && (
+          {!run && hasCursor && (
             <>
               <Kbd k="f" size="xs" /> start
             </>
@@ -419,7 +420,6 @@ export function TodayMode() {
           layout="position"
           className="row today-row"
           data-selected={selected || undefined}
-          data-done={item.done || undefined}
           data-focus={isActive || undefined}
           data-left={leftSet.has(item.id) || undefined}
           initial={{ opacity: 0, y: -6 }}
@@ -429,16 +429,7 @@ export function TodayMode() {
           onClick={() => todayFocus(item.id)}
         >
           <span className="row__index today-check" aria-hidden>
-            <AnimatePresence initial={false} mode="wait">
-              <motion.span
-                key={item.done ? 'x' : 'o'}
-                initial={{ scale: 0.4, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.4, opacity: 0, transition: { duration: 0.06 } }}
-              >
-                {item.done ? '[x]' : '[ ]'}
-              </motion.span>
-            </AnimatePresence>
+            [ ]
           </span>
           <span className="row__main">
             <span className="row__text">{item.text}</span>
@@ -448,7 +439,7 @@ export function TodayMode() {
             {isActive && <span className="tag tag--focus">now</span>}
             {overtime.has(item.id) && <span className="tag tag--overdue">over time</span>}
             <TimeTag item={item} />
-            {!item.done && isOverdue(item.slot, today) && <SlotTag item={item} today={today} />}
+            {isOverdue(item.slot, today) && <SlotTag item={item} today={today} />}
             {item.quadrant && <QuadrantTag item={item} />}
           </span>
         </motion.li>
@@ -470,13 +461,13 @@ export function TodayMode() {
           <ClarityLine items={items} />
         </header>
 
-        {list.length > 0 && (
+        {total > 0 && (
           <div className="today-progress">
             <div className="progress" aria-hidden>
-              <motion.div className="progress__fill" initial={false} animate={{ width: `${(done / list.length) * 100}%` }} />
+              <motion.div className="progress__fill" initial={false} animate={{ width: `${(done / total) * 100}%` }} />
             </div>
             <span className="tray__count">
-              {done}/{list.length} done
+              {done}/{total} done
             </span>
           </div>
         )}
@@ -485,7 +476,7 @@ export function TodayMode() {
 
         {list.length === 0 && !adding ? (
           <div className="dump-empty dump-empty--static">
-            <span className="dump-empty__title">Nothing planned for today.</span>
+            <span className="dump-empty__title">{allDone ? 'Everything for today is done.' : 'Nothing planned for today.'}</span>
             <span className="dump-empty__keys">
               <button className="cta cta--inline" onMouseDown={keepFocus} onClick={todayAddOpen}>
                 Add a task <Kbd k="n" size="xs" />
@@ -493,6 +484,11 @@ export function TodayMode() {
               <button className="cta cta--inline" onMouseDown={keepFocus} onClick={() => setMode('plan')}>
                 Plan the week <Kbd k="shift+3" size="xs" />
               </button>
+              {allDone && (
+                <button className="cta cta--inline" onMouseDown={keepFocus} onClick={() => setMode('archive')}>
+                  See what you did <Kbd k="shift+5" size="xs" />
+                </button>
+              )}
               <span>or enjoy the space.</span>
             </span>
           </div>

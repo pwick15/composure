@@ -2,7 +2,7 @@ import { AnimatePresence } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { Chip } from '../components/Chip'
 import { Kbd, Keys } from '../components/Kbd'
-import { DoneTag, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
+import { QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
 import { Tray, type Receipt } from '../components/Tray'
 import { todayKey } from '../lib/dates'
 import { fmt, sumMinutes } from '../lib/duration'
@@ -71,8 +71,8 @@ export function SortMode() {
   const today = todayKey()
 
   // Parents are labels for their subtasks, so only the subtasks are sorted.
-  const items = useMemo(() => leaves(live(all, today)), [all, today])
-  const currentId = resolveSortCursor(all, deck.cursor, today)
+  const items = useMemo(() => leaves(live(all)), [all])
+  const currentId = resolveSortCursor(all, deck.cursor)
   const current = items.find((i) => i.id === currentId) ?? null
   const unsorted = useMemo(() => items.filter((i) => !i.quadrant), [items])
   const ahead = unsorted.filter((i) => i.id !== currentId).length
@@ -89,8 +89,8 @@ export function SortMode() {
 
   // Each quadrant lists its thoughts quickest first.
   const byQuadrant = useMemo(
-    () => Object.fromEntries(sortGroups(all, today).slice(1).map((list, i) => [QUADRANTS[i].id, list])) as Record<string, Item[]>,
-    [all, today],
+    () => Object.fromEntries(sortGroups(all).slice(1).map((list, i) => [QUADRANTS[i].id, list])) as Record<string, Item[]>,
+    [all],
   )
 
   useEffect(() => {
@@ -112,7 +112,6 @@ export function SortMode() {
               <QuadrantTag item={current} />
               <SlotTag item={current} today={today} />
               <TimeTag item={current} nudge />
-              <DoneTag item={current} />
             </>
           )
         }

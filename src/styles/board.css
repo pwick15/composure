@@ -110,11 +110,6 @@
   overflow: hidden;
 }
 
-.card__text[data-done] {
-  color: var(--text-3);
-  text-decoration: line-through;
-}
-
 .card__input {
   width: 100%;
   padding: 0;
@@ -470,11 +465,6 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
-}
-
-.chip[data-done] .chip__text {
-  color: var(--text-3);
-  text-decoration: line-through;
 }
 
 .chip__meta {

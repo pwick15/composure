@@ -124,7 +124,7 @@ export function makeItem(text: string, parent?: Item): Item {
 const findItem = (id: string | null) => (id ? get().items.find((i) => i.id === id) : undefined)
 
 /** The thoughts Dump shows: everything that isn't in the archive. */
-const liveItems = () => live(get().items, todayKey())
+const liveItems = () => live(get().items)
 
 /** Previous and next thought as Dump shows them, subtasks included. */
 function neighbours(id: string) {
@@ -188,7 +188,10 @@ export function removeItem(id: string): number {
   return kids
 }
 
-/** A parent has no done flag of its own: ticking it ticks every subtask, or clears them if all were done. */
+/**
+ * Ticks a thought off, and it goes straight to the Archive. A parent has no done flag of its own:
+ * ticking it ticks every subtask, or clears them if all were done (only possible from the Archive).
+ */
 export function toggleDone(id: string) {
   const item = findItem(id)
   if (!item) return
@@ -197,10 +200,10 @@ export function toggleDone(id: string) {
     const allDone = kids.every((k) => k.done)
     const now = Date.now()
     commit(get().items.map((i) => (i.parentId === id ? { ...i, done: !allDone, doneAt: allDone ? null : i.done ? i.doneAt : now } : i)))
-    return toast(allDone ? 'Marked not done' : `Done, with ${plural(kids.length, 'subtask')}`, 'x')
+    return toast(allDone ? 'Marked not done' : `Done, with ${plural(kids.length, 'subtask')}. Archived`, 'mod+z')
   }
   patch(id, { done: !item.done })
-  toast(item.done ? 'Marked not done' : 'Done', 'x')
+  toast(item.done ? 'Marked not done' : 'Done. Archived', 'mod+z')
 }
 
 /** Moves a thought up or down among its siblings; a parent takes its subtasks with it. */
@@ -209,7 +212,7 @@ export function moveItem(id: string, dir: -1 | 1) {
   const item = items.find((it) => it.id === id)
   if (!item) return
   const key = parentKey(items, item)
-  const hidden = archivedIds(items, todayKey())
+  const hidden = archivedIds(items)
   const siblings = items.filter((it) => parentKey(items, it) === key && !hidden.has(it.id))
   const other = siblings[siblings.findIndex((it) => it.id === id) + dir]
   if (!other) return
@@ -230,7 +233,7 @@ export function indentItem(id: string): boolean {
     toast('Already a subtask. One level deep keeps it simple')
     return false
   }
-  const order = treeOrder(live(items, todayKey()))
+  const order = treeOrder(live(items))
   const above = order[order.findIndex((i) => i.id === id) - 1]
   if (!above) {
     toast('Nothing above to nest under')
@@ -572,7 +575,7 @@ const isDeck = (m: Mode): m is DeckMode => m === 'sort' || m === 'plan'
 /** The deck's lists in reading order. Group 0 is the queue still waiting for a decision. */
 function groupsFor(m: DeckMode): Item[][] {
   const { items } = get()
-  return m === 'sort' ? sortGroups(items, todayKey()) : planGroups(items, todayKey())
+  return m === 'sort' ? sortGroups(items) : planGroups(items, todayKey())
 }
 
 const inDeck = (m: DeckMode, id: string) => groupsFor(m).some((g) => g.some((i) => i.id === id))
@@ -580,7 +583,7 @@ const inDeck = (m: DeckMode, id: string) => groupsFor(m).some((g) => g.some((i) 
 function currentIdFor(m: DeckMode): string | null {
   const { items, decks } = get()
   const { cursor } = decks[m]
-  return m === 'sort' ? resolveSortCursor(items, cursor, todayKey()) : resolvePlanCursor(items, cursor, todayKey())
+  return m === 'sort' ? resolveSortCursor(items, cursor) : resolvePlanCursor(items, cursor, todayKey())
 }
 
 export const sortCurrent = () => findItem(currentIdFor('sort')) ?? null
@@ -825,18 +828,16 @@ export function todayMove(dir: -1 | 1) {
   set({ todayCursor: list[clamp(i + dir, 0, list.length - 1)].id })
 }
 
-/** X / Space: tick it off, then move to the next thing still open. */
+/** X / Space: tick it off, which sends it to the Archive, and move to the next task. */
 export function todayToggle() {
   const cur = todayCurrent()
   if (!cur) return nothingToday()
-  patch(cur.id, { done: !cur.done })
-  if (cur.done) return toast('Reopened', 'x')
-  const s = get()
-  const list = todayList(s.items, todayKey())
+  const list = todayList(get().items, todayKey())
   const i = list.findIndex((it) => it.id === cur.id)
-  const next = [...list.slice(i + 1), ...list.slice(0, i)].find((it) => !it.done)
-  set({ todayCursor: next?.id ?? cur.id })
-  toast(next ? 'Done. Next up' : "Done. That's everything for today", 'mod+z')
+  const next = [...list.slice(i + 1), ...list.slice(0, i)][0]
+  patch(cur.id, { done: true })
+  set({ todayCursor: next?.id ?? null })
+  toast(next ? 'Done. Archived. Next up' : "Done. That's everything for today", 'mod+z')
   sessionSync() // a running session moves straight on to the next task
 }
 
@@ -1020,9 +1021,7 @@ export function sessionCarryOn() {
 
 function sessionFinished(session: number) {
   const name = sessionName(session)
-  const another = todaySessions(get().items, todayKey()).find(
-    (g) => g.session !== session && g.items.some((i) => !i.done),
-  )
+  const another = todaySessions(get().items, todayKey()).find((g) => g.session !== session)
   set({ run: null })
   const more = another ? ` Next: ${sessionName(another.session)}` : ''
   toast(`${name} done. Nice work.${more}`)
@@ -1079,7 +1078,7 @@ export function todayMoveSession(dir: -1 | 1) {
 
 export function archiveCurrent(): Item | null {
   const s = get()
-  return findItem(resolveArchiveCursor(s.items, s.archiveCursor, todayKey())) ?? null
+  return findItem(resolveArchiveCursor(s.items, s.archiveCursor)) ?? null
 }
 
 /** ⌫ / esc: back to the screen the Archive was opened from. */
@@ -1093,7 +1092,7 @@ export function archiveFocus(id: string) {
 }
 
 export function archiveMove(dir: -1 | 1) {
-  const list = archiveOrder(get().items, todayKey())
+  const list = archiveOrder(get().items)
   if (!list.length) return toast('Nothing archived yet')
   const i = list.findIndex((it) => it.id === archiveCurrent()?.id)
   set({ archiveCursor: list[clamp(i + dir, 0, list.length - 1)].id })
@@ -1103,7 +1102,7 @@ export function archiveMove(dir: -1 | 1) {
 function archiveTarget() {
   const cur = archiveCurrent()
   if (!cur) return null
-  const list = archiveOrder(get().items, todayKey())
+  const list = archiveOrder(get().items)
   const i = list.findIndex((it) => it.id === cur.id)
   return { cur, after: (list[i + 1] ?? list[i - 1])?.id ?? null }
 }
@@ -1131,7 +1130,7 @@ export function jumpTo(id: string) {
   const { mode } = get()
   if (isDeck(mode) && inDeck(mode, id)) return deckFocus(mode, id)
   if (mode === 'today' && todayList(get().items, todayKey()).some((i) => i.id === id)) return todayFocus(id)
-  if (archivedIds(get().items, todayKey()).has(id)) {
+  if (archivedIds(get().items).has(id)) {
     setMode('archive')
     return archiveFocus(id)
   }

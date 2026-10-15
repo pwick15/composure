@@ -13,20 +13,15 @@ export function QuadrantTag({ item }: { item: Item }) {
   )
 }
 
-export function SlotTag({ item, today, done = item.done }: { item: Item; today: string; done?: boolean }) {
+export function SlotTag({ item, today }: { item: Item; today: string }) {
   if (!item.slot) return null
-  const late = !done && isOverdue(item.slot, today)
-  return <span className={`tag ${late ? 'tag--overdue' : ''}`}>{slotLabel(item.slot, today, done)}</span>
+  return <span className={`tag ${isOverdue(item.slot, today) ? 'tag--overdue' : ''}`}>{slotLabel(item.slot, today)}</span>
 }
 
 /** "~30m". With `nudge`, a thought with no estimate says so instead of showing nothing. */
 export function TimeTag({ item, nudge = false, minutes = item.minutes }: { item: Item; nudge?: boolean; minutes?: number | null }) {
   if (minutes) return <span className="tag tag--time" title="Estimated time">~{fmt(minutes)}</span>
   return nudge ? <span className="tag tag--muted">no time</span> : null
-}
-
-export function DoneTag({ item, done = item.done }: { item: Item; done?: boolean }) {
-  return done ? <span className="tag tag--done">Done</span> : null
 }
 
 /** "↳ Plan trip": which thought a subtask belongs to, wherever the subtask shows up. */

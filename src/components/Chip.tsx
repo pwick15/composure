@@ -26,7 +26,6 @@ export function Chip({ item, ref, selected, fresh, meta, onSelect }: ChipProps) 
       data-q={item.quadrant ?? 'none'}
       data-selected={selected || undefined}
       data-fresh={fresh || undefined}
-      data-done={item.done || undefined}
       initial={{ opacity: 0, scale: 0.94 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.94, transition: EXIT_FAST }}

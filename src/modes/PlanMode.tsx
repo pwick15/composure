@@ -2,9 +2,9 @@ import { AnimatePresence } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { Chip } from '../components/Chip'
 import { Kbd, Keys } from '../components/Kbd'
-import { DoneTag, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
+import { QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
 import { Tray, type Receipt } from '../components/Tray'
-import { columnFor, isDateSlot, LATER, planColumns, slotLabel, todayKey, type DayColumn } from '../lib/dates'
+import { isDateSlot, LATER, planColumns, slotLabel, todayKey, type DayColumn } from '../lib/dates'
 import { fmt, sumMinutes } from '../lib/duration'
 import { keepFocus } from '../lib/motion'
 import { isPlannable, itemsInColumn, live, planQueue, resolvePlanCursor } from '../lib/selectors'
@@ -75,14 +75,11 @@ export function PlanMode() {
   const cols = useMemo(() => planColumns(today), [today])
 
   // Parents are labels for their subtasks, so only the subtasks are planned.
-  const items = useMemo(() => leaves(live(all, today)), [all, today])
+  const items = useMemo(() => leaves(live(all)), [all])
   const currentId = resolvePlanCursor(all, deck.cursor, today)
   const current = items.find((i) => i.id === currentId) ?? null
   const queue = useMemo(() => planQueue(all, today), [all, today])
-  const plannable = useMemo(
-    () => items.filter((i) => isPlannable(i) && !(i.done && !columnFor(i.slot, today))),
-    [items, today],
-  )
+  const plannable = useMemo(() => items.filter(isPlannable), [items])
   const dropped = items.length - items.filter(isPlannable).length
 
   const lastId = deck.trail.at(-1)
@@ -114,7 +111,6 @@ export function PlanMode() {
               <QuadrantTag item={current} />
               <SlotTag item={current} today={today} />
               <TimeTag item={current} />
-              <DoneTag item={current} />
             </>
           )
         }

@@ -2,7 +2,7 @@ import { motion } from 'motion/react'
 import { useMemo } from 'react'
 import { todayKey } from '../lib/dates'
 import { keepFocus, SNAP } from '../lib/motion'
-import { live, planQueue, todayList } from '../lib/selectors'
+import { live, planQueue, todayList, todayProgress } from '../lib/selectors'
 import { leaves } from '../lib/tree'
 import type { Mode } from '../lib/types'
 import { openPalette, setMode, toggleHelp } from '../state/actions'
@@ -24,16 +24,15 @@ export function TopBar() {
 
   const counts = useMemo(() => {
     const key = todayKey()
-    const kept = live(items, key)
+    const kept = live(items)
     const unsorted = leaves(kept).filter((i) => !i.quadrant).length
     const unplanned = planQueue(items, key).length
     const today = todayList(items, key)
-    const open = today.filter((i) => !i.done).length
     return {
       dump: kept.length ? String(kept.length) : '',
       sort: kept.length ? (unsorted ? `${unsorted} left` : '✓') : '',
       plan: kept.length ? (unplanned ? `${unplanned} left` : '✓') : '',
-      today: today.length ? (open ? `${open} left` : '✓') : '',
+      today: today.length ? `${today.length} left` : todayProgress(items, key).done ? '✓' : '',
     }
   }, [items])
 

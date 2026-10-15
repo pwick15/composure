@@ -25,9 +25,9 @@ export function ArchiveMode() {
   const from = useStore((s) => s.archiveFrom)
   const today = todayKey()
 
-  const days = useMemo(() => archiveDays(items, today), [items, today])
+  const days = useMemo(() => archiveDays(items), [items])
   const total = days.reduce((n, d) => n + d.items.length, 0)
-  const currentId = resolveArchiveCursor(items, cursor, today)
+  const currentId = resolveArchiveCursor(items, cursor)
 
   useEffect(() => {
     document.querySelector('.archive-row[data-selected]')?.scrollIntoView({ block: 'nearest' })
@@ -90,9 +90,7 @@ export function ArchiveMode() {
           <div className="eyebrow">// archive</div>
           <h1>{total ? 'What you got done.' : 'Nothing archived yet.'}</h1>
           <p className="lede">
-            {total
-              ? 'Finished thoughts rest here from the day after you tick them off.'
-              : 'Tick something off. Tomorrow it moves here, out of the way.'}
+            {total ? 'Everything you tick off lands here.' : 'Tick something off and it lands here.'}
           </p>
         </header>
 

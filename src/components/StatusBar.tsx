@@ -83,7 +83,7 @@ function hintsFor(s: State): Hint[] {
   if (s.trayEditing) return [h('enter', 'save'), h('escape', 'cancel')]
 
   if (s.mode === 'sort') {
-    if (!resolveSortCursor(s.items, s.decks.sort.cursor, todayKey()))
+    if (!resolveSortCursor(s.items, s.decks.sort.cursor))
       return [h('shift+3', 'plan'), h('backspace', 'back'), h(['up', 'down'], 'revisit'), h('mod+k', 'search')]
     return [
       h(['q', 'w', 'a', 's'], 'file'),
@@ -117,7 +117,7 @@ const MODE_LABEL = { dump: 'DUMP', sort: 'SORT', plan: 'PLAN', today: 'TODAY', a
 export function StatusBar() {
   const state = useStore()
   const hints = hintsFor(state)
-  const thoughts = live(state.items, todayKey()).length
+  const thoughts = live(state.items).length
   return (
     <footer className="statusbar">
       <span className="statusbar__mode">{MODE_LABEL[state.mode]}</span>

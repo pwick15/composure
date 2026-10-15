@@ -111,7 +111,7 @@ export const useStore = create<State>()(
       version: 5,
       // v2 added subtasks (older thoughts are all top-level), v3 time estimates (none yet), v4 work
       // sessions (everything is in the first) and replaced the single-task focus timer, v5 the day a
-      // thought was done (what was ticked off today stays on screen today; older ones are archived).
+      // thought was done (the Archive groups by it).
       migrate: (persisted) => {
         const old = persisted as { items?: Partial<Item>[]; focus?: unknown }
         const today = todayKey()

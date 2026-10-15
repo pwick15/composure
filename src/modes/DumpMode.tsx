@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, type ClipboardEvent, type KeyboardEvent, type Ref } from 'react'
 import { flushSync } from 'react-dom'
 import { Kbd } from '../components/Kbd'
-import { DoneTag, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
+import { QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
 import { feedback } from '../keyboard/feedback'
 import { isMac } from '../keyboard/keys'
 import { todayKey } from '../lib/dates'
@@ -11,7 +11,7 @@ import { EXIT_FAST, keepFocus } from '../lib/motion'
 import { splitLines } from '../lib/text'
 import { sumMinutes } from '../lib/duration'
 import { live } from '../lib/selectors'
-import { childrenOf, draftIndex, isDone, leaves, parentIds, progress, treeOrder } from '../lib/tree'
+import { childrenOf, draftIndex, leaves, parentIds, progress, treeOrder } from '../lib/tree'
 import type { Item } from '../lib/types'
 import {
   editorAddSub,
@@ -171,14 +171,13 @@ interface RowProps {
   kids: { done: number; total: number } | null
   /** What a parent's subtasks add up to, or this thought's own estimate. */
   minutes: number | null
-  done: boolean
   selected: boolean
   editing: EditTarget | null
   today: string
   ref?: Ref<HTMLLIElement>
 }
 
-function Row({ item, gutter, sub, kids, minutes, done, selected, editing, today, ref }: RowProps) {
+function Row({ item, gutter, sub, kids, minutes, selected, editing, today, ref }: RowProps) {
   const quiet = bornInPlace.has(item.id)
   return (
     <motion.li
@@ -188,7 +187,6 @@ function Row({ item, gutter, sub, kids, minutes, done, selected, editing, today,
       data-sub={sub || undefined}
       data-selected={selected || undefined}
       data-editing={editing ? '' : undefined}
-      data-done={done || undefined}
       initial={quiet ? false : { opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -16, transition: EXIT_FAST }}
@@ -201,7 +199,6 @@ function Row({ item, gutter, sub, kids, minutes, done, selected, editing, today,
         <span className="row__text">{item.text}</span>
       )}
       <span className="row__meta">
-        <DoneTag item={item} done={done} />
         {kids ? (
           <>
             <TimeTag item={item} minutes={minutes} />
@@ -279,8 +276,8 @@ export function DumpMode() {
   const selectedId = useStore((s) => s.selectedId)
   const editing = useStore((s) => s.editing)
   const today = todayKey()
-  // Thoughts finished on an earlier day live in the Archive, not here.
-  const items = useMemo(() => live(all, today), [all, today])
+  // Finished thoughts live in the Archive, not here.
+  const items = useMemo(() => live(all), [all])
   const listRef = useRef<HTMLOListElement>(null)
 
   // An item committed from the draft replaces it in place; skip its entrance animation.
@@ -308,9 +305,8 @@ export function DumpMode() {
         item={item}
         gutter={sub ? (lastSibling ? '└' : '├') : String(top).padStart(2, '0')}
         sub={sub}
-        kids={parents.has(item.id) ? progress(items, item.id) : null}
+        kids={parents.has(item.id) ? progress(all, item.id) : null}
         minutes={parents.has(item.id) ? sumMinutes(childrenOf(items, item.id)) || null : item.minutes}
-        done={isDone(items, item)}
         selected={selectedId === item.id}
         editing={editing?.kind === 'item' && editing.id === item.id ? editing : null}
         today={today}

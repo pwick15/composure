@@ -42,20 +42,20 @@ describe('screens', () => {
   it('Dump shows subtasks as a tree with progress and the parent total', () => {
     seed()
     const html = render(<DumpMode />)
-    expect(html).toContain('├')
-    expect(html).toContain('└')
+    expect(html).toContain('└') // the open subtask; the finished one is in the archive
+    expect(html).not.toContain('book hotel')
     expect(html).toContain('1/2')
-    expect(html).toContain('~2h') // 30m + 90m
+    expect(html).toContain('~30m') // what's left of the parent
   })
 
   it('Sort puts the subtasks in quadrants, not the parent, each pointing back at it', () => {
     seed()
     const html = render(<SortMode />)
     expect(html).toContain('book flights')
-    expect(html.match(/class="chip"/g)).toHaveLength(3) // not four: the parent is a label, not a task
+    expect(html.match(/class="chip"/g)).toHaveLength(2) // not three: the parent is a label, and the hotel is archived
     expect(html).toContain('↳</span> Plan trip') // shown only as the reference on its subtasks
-    expect(html).toContain('2h') // the Do quadrant's total: 30m + 90m
-    expect(html).toContain('3/3') // all three actionable thoughts are sorted
+    expect(html).toContain('quad__time">30m') // the Do quadrant's total
+    expect(html).toContain('2/2') // both open thoughts are sorted
   })
 
   it('Plan counts only the actionable thoughts and totals each day', () => {
@@ -63,7 +63,7 @@ describe('screens', () => {
     expect(getState().items).toHaveLength(4)
     const html = render(<PlanMode />)
     expect(html).toContain('Your week is planned')
-    expect(html).toContain('2h') // today's total
+    expect(html).toContain('30m') // today's total
   })
 
   it('Today shows the add line with its quadrant and time chips, and marks what is picked', () => {
@@ -83,7 +83,7 @@ describe('screens', () => {
     const html = render(<TodayMode />)
     expect(html).toContain('book flights')
     expect(html).toContain('~30m')
-    // 30m flights + a default 25m for the rent without an estimate; the hotel is done.
+    // 30m flights + a default 25m for the rent without an estimate; the hotel is in the archive.
     expect(html).toContain('55m</b> left')
     expect(html).toContain('start now')
     expect(html).toContain('1 without a time, counted as 25m')
@@ -131,7 +131,7 @@ describe('screens', () => {
     expect(html.indexOf('pay rent')).toBeGreaterThan(html.indexOf('book flights'))
   })
 
-  it('a finished task is struck through, never tagged Overdue, and moves to the Archive the next day', () => {
+  it('a finished task goes straight to the Archive, never tagged Overdue', () => {
     const yesterday = addDays(today, -1)
     const stamp = (day: string) => new Date(`${day}T09:00:00`).getTime()
     load([
@@ -140,13 +140,16 @@ describe('screens', () => {
       { ...base, id: 'c', text: 'still late', slot: yesterday },
     ])
     const dump = render(<DumpMode />)
-    expect(dump).toContain('late but done')
-    expect(dump).not.toContain('done last week') // archived
+    expect(dump).not.toContain('late but done')
+    expect(dump).not.toContain('done last week')
     expect(dump.match(/Overdue/g)).toHaveLength(1) // only the one that is really late
-    expect(render(<TodayMode />)).toContain('late but done')
+    const todayHtml = render(<TodayMode />)
+    expect(todayHtml).toContain('still late')
+    expect(todayHtml).not.toContain('late but done')
+    expect(todayHtml).toContain('1/2 done') // ticked off today out of what was on today's plate
     const archive = render(<ArchiveMode />)
     expect(archive).toContain('done last week')
-    expect(archive).not.toContain('late but done')
+    expect(archive).toContain('late but done')
     expect(archive).not.toContain('Overdue')
   })
 

@@ -14,6 +14,7 @@ import {
   sortOrder,
   timeLeft,
   todayList,
+  todayProgress,
 } from './selectors'
 import { splitLines } from './text'
 import { isDone, leaves, progress, treeOrder } from './tree'
@@ -99,7 +100,7 @@ describe('splitLines', () => {
 describe('selectors', () => {
   it('walks unsorted first, then quadrants in grid order', () => {
     const items = [item('a', { quadrant: 'drop' }), item('b'), item('c', { quadrant: 'do' })]
-    expect(sortOrder(items, TODAY).map((i) => i.text)).toEqual(['b', 'c', 'a'])
+    expect(sortOrder(items).map((i) => i.text)).toEqual(['b', 'c', 'a'])
   })
 
   it('groups Plan as queue, seven days, then Later', () => {
@@ -195,7 +196,7 @@ describe('subtasks', () => {
   })
 
   it('Sort and Plan only see the subtasks', () => {
-    expect(sortOrder(all, TODAY).map((i) => i.text)).toEqual(['Pay rent', 'book hotel', 'book flights'])
+    expect(sortOrder(all).map((i) => i.text)).toEqual(['Pay rent', 'book hotel', 'book flights'])
     expect(planQueue(all, TODAY).map((i) => i.text)).toEqual(['Pay rent', 'book hotel'])
   })
 
@@ -255,7 +256,7 @@ describe('time estimates', () => {
       item('queue b', { minutes: 60 }),
       item('queue a', { minutes: 5 }),
     ]
-    const [queue, doList, schedule] = sortGroups(items, TODAY)
+    const [queue, doList, schedule] = sortGroups(items)
     expect(doList.map((i) => i.text)).toEqual(['quick', 'long', 'unknown'])
     expect(schedule.map((i) => i.text)).toEqual(['other'])
     // The unsorted queue stays in Dump order: it is a to-decide list, not a to-do list.
@@ -314,44 +315,48 @@ describe('archive', () => {
   const at = (day: string, hour = 10) => new Date(`${day}T${String(hour).padStart(2, '0')}:00:00`).getTime()
   const YESTERDAY = '2026-10-11'
 
-  it('keeps what was done today on screen and files what was done earlier', () => {
+  it('files a thought the moment it is done, whatever day it was ticked off', () => {
     const items = [
       item('done today', { slot: TODAY, done: true, doneAt: at(TODAY) }),
       item('done yesterday', { slot: YESTERDAY, done: true, doneAt: at(YESTERDAY) }),
       item('open', { slot: TODAY }),
     ]
-    expect([...archivedIds(items, TODAY)]).toEqual([items[1].id])
-    expect(live(items, TODAY).map((i) => i.text)).toEqual(['done today', 'open'])
-    expect(todayList(items, TODAY).map((i) => i.text).sort()).toEqual(['done today', 'open'])
+    expect([...archivedIds(items)]).toEqual([items[0].id, items[1].id])
+    expect(live(items).map((i) => i.text)).toEqual(['open'])
+    expect(todayList(items, TODAY).map((i) => i.text)).toEqual(['open'])
   })
 
-  it('a done thought nobody dated is archived at once', () => {
-    expect(archivedIds([item('imported', { done: true })], TODAY).size).toBe(1)
+  it('a done thought nobody dated is archived too', () => {
+    expect(archivedIds([item('imported', { done: true })]).size).toBe(1)
   })
 
-  it('an overdue thought ticked off today stays in Today until tomorrow', () => {
-    const late = item('late', { slot: YESTERDAY, done: true, doneAt: at(TODAY) })
-    expect(todayList([late], TODAY)).toHaveLength(1)
-    expect(todayList([late], '2026-10-13')).toHaveLength(0)
-    expect(archivedIds([late], '2026-10-13').size).toBe(1)
-  })
-
-  it('a thought with subtasks is archived only when every subtask is', () => {
+  it('a done subtask leaves at once; the parent follows with the last one', () => {
     const parent = item('trip')
-    const a = item('flights', { parentId: parent.id, done: true, doneAt: at(YESTERDAY) })
+    const a = item('flights', { parentId: parent.id, done: true, doneAt: at(TODAY) })
     const b = item('hotel', { parentId: parent.id })
-    expect(archivedIds([parent, a, b], TODAY).size).toBe(0)
-    const both = [parent, a, { ...b, done: true, doneAt: at(YESTERDAY) }]
-    expect(archivedIds(both, TODAY).size).toBe(3)
-    expect(live(both, TODAY)).toHaveLength(0)
-    // one subtask finished today keeps the whole family on screen
-    expect(archivedIds([parent, a, { ...b, done: true, doneAt: at(TODAY) }], TODAY).size).toBe(0)
+    expect([...archivedIds([parent, a, b])]).toEqual([a.id])
+    expect(live([parent, a, b]).map((i) => i.text)).toEqual(['trip', 'hotel'])
+    const both = [parent, a, { ...b, done: true, doneAt: at(TODAY) }]
+    expect(archivedIds(both).size).toBe(3)
+    expect(live(both)).toHaveLength(0)
   })
 
   it('Sort and Plan leave archived thoughts out', () => {
     const old = item('old', { quadrant: 'do', slot: TODAY, done: true, doneAt: at(YESTERDAY) })
-    expect(sortGroups([old], TODAY).flat()).toHaveLength(0)
+    expect(sortGroups([old]).flat()).toHaveLength(0)
     expect(itemsInColumn([old], TODAY, TODAY)).toHaveLength(0)
+  })
+
+  it("today's progress counts what was ticked off today, archived or not", () => {
+    const items = [
+      item('done', { slot: TODAY, done: true, doneAt: at(TODAY) }),
+      item('late and done', { slot: YESTERDAY, done: true, doneAt: at(TODAY) }),
+      item('open', { slot: TODAY }),
+      item('done yesterday', { slot: YESTERDAY, done: true, doneAt: at(YESTERDAY) }),
+      item('done early', { slot: '2026-10-20', done: true, doneAt: at(TODAY) }),
+      item('unplanned', { done: true, doneAt: at(TODAY) }),
+    ]
+    expect(todayProgress(items, TODAY)).toEqual({ done: 2, total: 3 })
   })
 
   it('lists the archive by day, latest first', () => {
@@ -360,14 +365,9 @@ describe('archive', () => {
       item('late', { done: true, doneAt: at(YESTERDAY, 17) }),
       item('early', { done: true, doneAt: at(YESTERDAY, 8) }),
     ]
-    const days = archiveDays(items, TODAY)
+    const days = archiveDays(items)
     expect(days.map((d) => d.day)).toEqual([YESTERDAY, '2026-10-09'])
     expect(days[0].items.map((i) => i.text)).toEqual(['late', 'early'])
-  })
-
-  it('a finished thought is not overdue', () => {
-    expect(slotLabel(YESTERDAY, TODAY)).toBe('Overdue · Sun 11 Oct')
-    expect(slotLabel(YESTERDAY, TODAY, true)).toBe('Sun 11 Oct')
   })
 
   it('backups keep the day it was done', () => {

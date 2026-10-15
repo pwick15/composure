@@ -116,7 +116,7 @@ export function Tray({ label, done, total, current, ahead, tags, idle, empty, re
                 {editing === current.id ? (
                   <TrayEditor item={current} />
                 ) : (
-                  <p className="card__text" data-done={current.done || undefined}>
+                  <p className="card__text">
                     {current.text}
                   </p>
                 )}

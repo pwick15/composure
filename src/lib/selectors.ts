@@ -1,4 +1,4 @@
-import { columnFor, dayKey, isOverdue, planColumns } from './dates'
+import { columnFor, dayKey, isDateSlot, isOverdue, planColumns } from './dates'
 import { effMinutes } from './session'
 import { QUADRANTS, QUADRANT_RANK } from './quadrants'
 import { leaves } from './tree'
@@ -18,21 +18,17 @@ const tackleOrder = (a: Item, b: Item) => rankOf(a) - rankOf(b) || shorterFirst(
 
 // ---------------------------------------------------------------- archive
 //
-// A thought you finished stays put, struck through, for the rest of that day. From the next day
-// it moves to the Archive and leaves every other screen. Nothing is moved or copied: it is a
-// question of when it was ticked off, so ⌘Z and reopening just work.
+// A thought you finish goes straight to the Archive and leaves every other screen. Nothing is
+// moved or copied: it is a question of whether it is done, so ⌘Z and reopening just work.
 
 /** The day a done thought was ticked off, or null when it is open or nobody recorded when. */
 export const doneDay = (i: Item): string | null => (i.done && i.doneAt !== null ? dayKey(new Date(i.doneAt)) : null)
 
-/** Done before today. A done thought with no date (an import) counts as long ago. */
-const finishedBefore = (i: Item, today: string) => i.done && (i.doneAt === null || doneDay(i)! < today)
-
 /**
- * What the Archive holds: thoughts finished on an earlier day. A thought with subtasks goes
- * only once every subtask has, and takes them along, so a half-finished plan stays whole.
+ * What the Archive holds: every finished thought. A thought with subtasks goes once every
+ * subtask has, and takes them along, so the last tick closes the whole plan.
  */
-export function archivedIds(all: Item[], today: string): Set<string> {
+export function archivedIds(all: Item[]): Set<string> {
   const ids = new Set(all.map((i) => i.id))
   const kids = new Map<string, Item[]>()
   for (const i of all) {
@@ -41,24 +37,25 @@ export function archivedIds(all: Item[], today: string): Set<string> {
   const out = new Set<string>()
   for (const i of all) {
     const sub = kids.get(i.id)
-    if (sub) {
-      if (!sub.every((k) => finishedBefore(k, today))) continue
+    if (!sub) {
+      if (i.done) out.add(i.id)
+    } else if (sub.every((k) => k.done)) {
       out.add(i.id)
       for (const k of sub) out.add(k.id)
-    } else if (!(i.parentId && ids.has(i.parentId)) && finishedBefore(i, today)) out.add(i.id)
+    }
   }
   return out
 }
 
 /** Everything except the archive: what Dump, Sort, Plan and Today work with. */
-export function live(all: Item[], today: string): Item[] {
-  const gone = archivedIds(all, today)
+export function live(all: Item[]): Item[] {
+  const gone = archivedIds(all)
   return gone.size ? all.filter((i) => !gone.has(i.id)) : all
 }
 
 /** The archive grouped by the day each thing was done, latest first. Undated ones go at the end. */
-export function archiveDays(all: Item[], today: string): { day: string | null; items: Item[] }[] {
-  const gone = archivedIds(all, today)
+export function archiveDays(all: Item[]): { day: string | null; items: Item[] }[] {
+  const gone = archivedIds(all)
   const items = leaves(all)
     .filter((i) => gone.has(i.id))
     .sort((a, b) => (b.doneAt ?? -1) - (a.doneAt ?? -1))
@@ -73,18 +70,18 @@ export function archiveDays(all: Item[], today: string): { day: string | null; i
 }
 
 /** The order ↑/↓ walks in the Archive. */
-export const archiveOrder = (all: Item[], today: string): Item[] => archiveDays(all, today).flatMap((d) => d.items)
+export const archiveOrder = (all: Item[]): Item[] => archiveDays(all).flatMap((d) => d.items)
 
-export function resolveArchiveCursor(all: Item[], cursor: string | null, today: string): string | null {
-  const list = archiveOrder(all, today)
+export function resolveArchiveCursor(all: Item[], cursor: string | null): string | null {
+  const list = archiveOrder(all)
   return (list.find((i) => i.id === cursor) ?? list[0])?.id ?? null
 }
 
 // ---------------------------------------------------------------- sort
 
 /** Sort's lists in reading order: the unsorted queue, then Do, Schedule, Delegate, Drop. */
-export function sortGroups(all: Item[], today: string): Item[][] {
-  const items = leaves(live(all, today))
+export function sortGroups(all: Item[]): Item[][] {
+  const items = leaves(live(all))
   return [
     items.filter((i) => !i.quadrant),
     ...QUADRANTS.map((q) => items.filter((i) => i.quadrant === q.id).sort(shorterFirst)),
@@ -92,11 +89,11 @@ export function sortGroups(all: Item[], today: string): Item[][] {
 }
 
 /** The order ↑/↓ walks in Sort. */
-export const sortOrder = (items: Item[], today: string) => sortGroups(items, today).flat()
+export const sortOrder = (items: Item[]) => sortGroups(items).flat()
 
 /** The stored cursor if it still exists, else the first unsorted item. */
-export function resolveSortCursor(all: Item[], cursor: string | null, today: string): string | null {
-  const items = leaves(live(all, today))
+export function resolveSortCursor(all: Item[], cursor: string | null): string | null {
+  const items = leaves(live(all))
   if (cursor && items.some((i) => i.id === cursor)) return cursor
   return items.find((i) => !i.quadrant)?.id ?? null
 }
@@ -107,9 +104,9 @@ export const isPlannable = (item: Item) => item.quadrant !== 'drop'
 
 /** Items still waiting for a day: overdue first, then by quadrant priority, then list order. */
 export function planQueue(all: Item[], today: string): Item[] {
-  return leaves(live(all, today))
+  return leaves(live(all))
     .map((item, index) => ({ item, index }))
-    .filter(({ item }) => isPlannable(item) && !item.done && columnFor(item.slot, today) === null)
+    .filter(({ item }) => isPlannable(item) && columnFor(item.slot, today) === null)
     .sort((a, b) => {
       const overdue = Number(isOverdue(b.item.slot, today)) - Number(isOverdue(a.item.slot, today))
       if (overdue) return overdue
@@ -142,7 +139,7 @@ export function nextInQueue(queue: Item[], currentId: string): string | null {
 }
 
 export function itemsInColumn(all: Item[], col: string, today: string): Item[] {
-  return leaves(live(all, today))
+  return leaves(live(all))
     .filter((i) => isPlannable(i) && columnFor(i.slot, today) === col)
     .sort(tackleOrder)
 }
@@ -151,13 +148,11 @@ export function itemsInColumn(all: Item[], col: string, today: string): Item[] {
 
 /**
  * Today's plan, one work session after another. Inside a session anything overdue comes first,
- * then quadrant by quadrant, quickest first. Overdue things drop off once done, but only tomorrow:
- * what you ticked off today stays, struck through.
+ * then quadrant by quadrant, quickest first. Only what is still open is here: a task you tick
+ * off goes to the Archive (and into `todayProgress`).
  */
 export function todayList(all: Item[], today: string): Item[] {
-  const items = leaves(live(all, today)).filter(
-    (i) => isPlannable(i) && (i.slot === today || (isOverdue(i.slot, today) && (!i.done || doneDay(i) === today))),
-  )
+  const items = leaves(live(all)).filter((i) => isPlannable(i) && (i.slot === today || isOverdue(i.slot, today)))
   const late = (i: Item) => Number(isOverdue(i.slot, today))
   return items.sort((a, b) => a.session - b.session || late(b) - late(a) || tackleOrder(a, b))
 }
@@ -175,12 +170,22 @@ export function todaySessions(items: Item[], today: string): { session: number; 
 
 /** The tasks of a session that still need doing. */
 export const openInSession = (items: Item[], today: string, session: number): Item[] =>
-  todayList(items, today).filter((i) => !i.done && i.session === session)
+  todayList(items, today).filter((i) => i.session === session)
 
 export function resolveTodayCursor(items: Item[], cursor: string | null, today: string): string | null {
   const list = todayList(items, today)
-  if (cursor && list.some((i) => i.id === cursor)) return cursor
-  return (list.find((i) => !i.done) ?? list[0])?.id ?? null
+  return (list.find((i) => i.id === cursor) ?? list[0])?.id ?? null
+}
+
+/**
+ * How far through today you are: what was ticked off today (archived by now) out of everything
+ * that was on today's plate. Finishing something planned for a later day doesn't count.
+ */
+export function todayProgress(all: Item[], today: string): { done: number; total: number } {
+  const done = leaves(all).filter(
+    (i) => isPlannable(i) && doneDay(i) === today && isDateSlot(i.slot) && i.slot <= today,
+  ).length
+  return { done, total: done + todayList(all, today).length }
 }
 
 /** The numbers that show how much lighter things are: total out of your head, let go, and on today. */
@@ -190,13 +195,12 @@ export function clarity(items: Item[], today: string) {
     total: items.length,
     dropped: leaves(items).filter((i) => i.quadrant === 'drop').length,
     today: list.length,
-    doneToday: list.filter((i) => i.done).length,
   }
 }
 
 /** Time still to go today. A task with no estimate counts as a default-length one, as a session would. */
 export function timeLeft(items: Item[], today: string) {
-  const open = todayList(items, today).filter((i) => !i.done)
+  const open = todayList(items, today)
   return {
     minutes: open.reduce((n, i) => n + effMinutes(i), 0),
     unestimated: open.filter((i) => i.minutes === null).length,

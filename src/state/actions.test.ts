@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, todayKey } from '../lib/dates'
 import { makeBackup } from '../lib/export'
-import { todayList, todaySessions } from '../lib/selectors'
+import { todayList, todayProgress, todaySessions } from '../lib/selectors'
 import { parentOf, treeOrder } from '../lib/tree'
 import * as a from './actions'
 import { importFile } from './exporters'
@@ -907,7 +907,6 @@ describe('work sessions', () => {
 
 describe('archive', () => {
   const task = (text: string) => getState().items.find((i) => i.text === text)!
-  const tomorrow = () => addDays(todayKey(), 1)
 
   it('ticking off records when; reopening clears it', () => {
     dump('a')
@@ -918,11 +917,10 @@ describe('archive', () => {
     expect(task('a')).toMatchObject({ done: false, doneAt: null })
   })
 
-  it('moves to the archive the next day and Reopen brings it back', () => {
+  it('goes to the archive at once and Reopen brings it back', () => {
     dump('a', 'b')
     a.toggleDone(task('a').id)
-    // a day later
-    setState({ items: getState().items.map((i) => (i.text === 'a' ? { ...i, doneAt: Date.now() - 36 * 3_600_000 } : i)) })
+    expect(getState().items.filter((i) => !i.done).map((i) => i.text)).toEqual(['b'])
     a.setMode('archive')
     expect(a.archiveCurrent()?.text).toBe('a')
     a.archiveReopen()
@@ -943,16 +941,18 @@ describe('archive', () => {
     expect(texts()).toEqual(['a', 'b', 'c'])
   })
 
-  it('an overdue task ticked off in Today stays there until tomorrow', () => {
-    dump('a')
-    const id = task('a').id
-    setState({ items: getState().items.map((i) => (i.id === id ? { ...i, slot: addDays(todayKey(), -1) } : i)) })
+  it('ticking off in Today archives it, moves to the next task and counts as progress', () => {
+    dump('a', 'b')
+    setState({ items: getState().items.map((i) => ({ ...i, slot: todayKey() })) })
     a.setMode('today')
-    a.todayFocus(id)
+    a.todayFocus(task('a').id)
     a.todayToggle()
     expect(task('a').done).toBe(true)
-    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['a'])
-    expect(todayList(getState().items, tomorrow()).map((i) => i.text)).toEqual([])
+    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['b'])
+    expect(getState().todayCursor).toBe(task('b').id)
+    expect(todayProgress(getState().items, todayKey())).toEqual({ done: 1, total: 2 })
+    a.undo()
+    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['a', 'b'])
   })
 
   it('Back returns to the screen the Archive was opened from', () => {
