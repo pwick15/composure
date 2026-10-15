@@ -246,7 +246,9 @@ describe('today', () => {
     a.cycleMode(1)
     expect(getState().mode).toBe('today')
     a.cycleMode(1)
-    expect(getState().mode).toBe('today')
+    expect(getState().mode).toBe('archive')
+    a.cycleMode(1)
+    expect(getState().mode).toBe('archive')
   })
 })
 
@@ -530,6 +532,7 @@ describe('export and import', () => {
         slot: i.text === 'flights' ? todayKey() : null,
         minutes: i.text === 'flights' ? 45 : null,
         done: i.text === 'hotel',
+        doneAt: i.text === 'hotel' ? 1_700_000_000_000 : null,
       })),
     })
     return getState().items
@@ -901,5 +904,56 @@ describe('work sessions', () => {
     a.todayAddOpen()
     a.todayAddEnter('new one')
     expect(getState().items.find((i) => i.text === 'new one')!.session).toBe(2)
+  })
+})
+
+describe('archive', () => {
+  const task = (text: string) => getState().items.find((i) => i.text === text)!
+  const tomorrow = () => addDays(todayKey(), 1)
+
+  it('ticking off records when; reopening clears it', () => {
+    dump('a')
+    a.toggleDone(getState().items[0].id)
+    expect(task('a')).toMatchObject({ done: true })
+    expect(task('a').doneAt).toBeTypeOf('number')
+    a.toggleDone(getState().items[0].id)
+    expect(task('a')).toMatchObject({ done: false, doneAt: null })
+  })
+
+  it('moves to the archive the next day and Reopen brings it back', () => {
+    dump('a', 'b')
+    a.toggleDone(task('a').id)
+    // a day later
+    setState({ items: getState().items.map((i) => (i.text === 'a' ? { ...i, doneAt: Date.now() - 36 * 3_600_000 } : i)) })
+    a.setMode('archive')
+    expect(a.archiveCurrent()?.text).toBe('a')
+    a.archiveReopen()
+    expect(task('a')).toMatchObject({ done: false, doneAt: null })
+    expect(a.archiveCurrent()).toBeNull()
+    a.undo()
+    expect(task('a').done).toBe(true)
+    expect(a.archiveCurrent()?.text).toBe('a')
+  })
+
+  it('Dump moves past archived thoughts', () => {
+    dump('a', 'b', 'c')
+    setState({ items: getState().items.map((i) => (i.text === 'b' ? { ...i, done: true, doneAt: null } : i)) })
+    setState({ selectedId: task('a').id })
+    a.dumpSelect(1)
+    expect(getState().selectedId).toBe(task('c').id)
+    a.dumpMove(1) // c has no live sibling after it, a is the only one before
+    expect(texts()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('an overdue task ticked off in Today stays there until tomorrow', () => {
+    dump('a')
+    const id = task('a').id
+    setState({ items: getState().items.map((i) => (i.id === id ? { ...i, slot: addDays(todayKey(), -1) } : i)) })
+    a.setMode('today')
+    a.todayFocus(id)
+    a.todayToggle()
+    expect(task('a').done).toBe(true)
+    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['a'])
+    expect(todayList(getState().items, tomorrow()).map((i) => i.text)).toEqual([])
   })
 })

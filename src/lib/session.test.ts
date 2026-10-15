@@ -13,6 +13,7 @@ const task = (id: string, minutes: number | null): Item => ({
   quadrant: 'do',
   slot: '2026-10-13',
   done: false,
+  doneAt: null,
   parentId: null,
   minutes,
   session: 1,

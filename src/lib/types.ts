@@ -1,4 +1,4 @@
-export type Mode = 'dump' | 'sort' | 'plan' | 'today'
+export type Mode = 'dump' | 'sort' | 'plan' | 'today' | 'archive'
 
 export type Quadrant = 'do' | 'schedule' | 'delegate' | 'drop'
 
@@ -12,6 +12,8 @@ export interface Item {
   quadrant: Quadrant | null
   slot: Slot | null
   done: boolean
+  /** When it was ticked off (ms). Null while open, and for done thoughts nobody dated, which count as long ago. */
+  doneAt: number | null
   /** The thought this is a subtask of. One level deep: a subtask never has subtasks of its own. */
   parentId: string | null
   /** How long it should take, in minutes. Null until you say. */

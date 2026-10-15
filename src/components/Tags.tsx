@@ -13,11 +13,10 @@ export function QuadrantTag({ item }: { item: Item }) {
   )
 }
 
-export function SlotTag({ item, today }: { item: Item; today: string }) {
+export function SlotTag({ item, today, done = item.done }: { item: Item; today: string; done?: boolean }) {
   if (!item.slot) return null
-  return (
-    <span className={`tag ${isOverdue(item.slot, today) ? 'tag--overdue' : ''}`}>{slotLabel(item.slot, today)}</span>
-  )
+  const late = !done && isOverdue(item.slot, today)
+  return <span className={`tag ${late ? 'tag--overdue' : ''}`}>{slotLabel(item.slot, today, done)}</span>
 }
 
 /** "~30m". With `nudge`, a thought with no estimate says so instead of showing nothing. */

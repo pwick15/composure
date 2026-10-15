@@ -2,7 +2,7 @@
 
 A keyboard-first place to empty your head when there's too much in it, sort what came out, and give the important things a day.
 
-Four screens, one flow. `⌥←` / `⌥→` step between them; `⇧1`–`⇧4` jump straight there.
+Five screens, one flow. `⌥←` / `⌥→` step between them; `⇧1`–`⇧5` jump straight there.
 
 1. **Dump** (`⇧1`). Start typing anywhere. `↵` saves the line and opens the next one; double-tap `⇧` (or `esc`) to finish. `⇧↑ ⇧↓` reorder. Paste a list and every line becomes a thought.
 2. **Sort** (`⇧2`). One thought at a time goes into an Eisenhower matrix. `Q W A S` files it and moves straight to the next one, no confirm step.
@@ -13,6 +13,8 @@ Four screens, one flow. `⌥←` / `⌥→` step between them; `⇧1`–`⇧4` j
    `N` adds a task right there: type it and `↵` puts it in today's plan and opens the next line. To say what it is first, `↓` moves into the options under the line: `←` `→` walk along a row (quadrant, then time), `↑` `↓` change row, `↵` picks the highlighted one (again to clear it) and `⇧↵` adds the task. Typing or `⌫` takes you back to the text. What you picked stays picked for the next task and can be clicked too; anything unpicked can be set later like any other task. Paste a list to add several at once.
 
    **Work sessions.** `⇧←` / `⇧→` move the selected task into the previous or next session (past the last one makes a new one), so you can split the day into blocks. `F` starts the session the selected task is in: it works through that session's open tasks, each for as long as its time estimate (25 minutes if it has none), and one clock runs down from the total. The first task is highlighted; when its time is up the next one is, and you get a browser notification (allow notifications when asked, and the browser tab itself shows the session: the time left in its title and the minutes left drawn in its icon, with a ring for the task you're on, so you can read it from any other window or a pinned tab). Nothing is ticked off for you: `X` the ones you finish, which moves straight on to the next with its full time. `=` and `-` give the task you're on more or less time, live. When the last window closes, anything still open is marked; tick off what you did, give the rest the time they still need with `=` / `-`, and press `↵` to carry on with a new round over what's left. `F` stops a session at any point, and it survives a reload.
+
+5. **Archive** (`⇧5`). Finished things rest here. Tick something off and it stays where it was, struck through, for the rest of that day; from the next day it leaves Dump, Sort, Plan and Today and appears here under the day you did it. `↑` `↓` walk the list, `X` reopens one (it comes back open, and overdue if its day has passed), `⌘⌫` deletes it. A thought with subtasks moves once all its subtasks have. Nothing is copied or moved in your data: it's just *when* you ticked it off, so `⌘Z` works here too. Things marked `[x]` in an imported file, with no date, go straight to the archive.
 
 **Time.** Say how long each thing takes. In Sort, `1`–`6` set 5m · 15m · 30m · 1h · 2h · 4h on the card you're looking at (it stays put; `Q W A S` still files it). In Sort, Plan and Today, `=` and `-` step the estimate longer or shorter. Within each quadrant, Sort, Plan and Today list the quickest first and anything without an estimate last, so you build momentum and the list shrinks fast. Because the order is automatic, there is no manual reordering in Plan or Today. Quadrants and days show their totals, and Today adds it up: planned, done, left, and when you'd be finished if you started now.
 
@@ -65,7 +67,8 @@ npx wrangler pages deploy dist --project-name composure
 | `src/keyboard/feedback.ts` | Keycap flashes and the keystroke overlay. |
 | `src/state/actions.ts` | All state changes, with undo history. |
 | `src/lib/` | Pure logic: dates, fuzzy search, queues, Markdown/iCalendar/Things export. |
-| `src/modes/` | The three screens. |
+| `src/lib/selectors.ts` | Which thoughts each screen shows, including what counts as archived (`archivedIds`, `live`). |
+| `src/modes/` | The screens. |
 
 ## Notes
 

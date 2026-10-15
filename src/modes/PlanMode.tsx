@@ -7,7 +7,7 @@ import { Tray, type Receipt } from '../components/Tray'
 import { columnFor, isDateSlot, LATER, planColumns, slotLabel, todayKey, type DayColumn } from '../lib/dates'
 import { fmt, sumMinutes } from '../lib/duration'
 import { keepFocus } from '../lib/motion'
-import { isPlannable, itemsInColumn, planQueue, resolvePlanCursor } from '../lib/selectors'
+import { isPlannable, itemsInColumn, live, planQueue, resolvePlanCursor } from '../lib/selectors'
 import { leaves } from '../lib/tree'
 import type { Item } from '../lib/types'
 import { deckFile, deckFocus, setMode } from '../state/actions'
@@ -75,7 +75,7 @@ export function PlanMode() {
   const cols = useMemo(() => planColumns(today), [today])
 
   // Parents are labels for their subtasks, so only the subtasks are planned.
-  const items = useMemo(() => leaves(all), [all])
+  const items = useMemo(() => leaves(live(all, today)), [all, today])
   const currentId = resolvePlanCursor(all, deck.cursor, today)
   const current = items.find((i) => i.id === currentId) ?? null
   const queue = useMemo(() => planQueue(all, today), [all, today])

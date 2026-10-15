@@ -6,9 +6,9 @@ import * as a from '../state/actions'
 import * as x from '../state/exporters'
 import { parseCombo, matchCombo } from './keys'
 
-export type Group = 'Modes' | 'General' | 'Dump' | 'Sort' | 'Plan' | 'Today' | 'Export' | 'Data' | 'Settings'
+export type Group = 'Modes' | 'General' | 'Dump' | 'Sort' | 'Plan' | 'Today' | 'Archive' | 'Export' | 'Data' | 'Settings'
 
-export const GROUP_ORDER: Group[] = ['Modes', 'Dump', 'Sort', 'Plan', 'Today', 'General', 'Export', 'Data', 'Settings']
+export const GROUP_ORDER: Group[] = ['Modes', 'Dump', 'Sort', 'Plan', 'Today', 'Archive', 'General', 'Export', 'Data', 'Settings']
 
 export interface Command {
   id: string
@@ -78,6 +78,15 @@ export const COMMANDS: Command[] = [
     keys: ['shift+4'],
     keywords: 'focus checklist done tick do now',
     run: () => a.setMode('today'),
+  },
+  {
+    id: 'mode.archive',
+    title: 'Archive: what you finished',
+    hud: 'Archive',
+    group: 'Modes',
+    keys: ['shift+5'],
+    keywords: 'done completed finished history past old',
+    run: () => a.setMode('archive'),
   },
   {
     id: 'mode.next',
@@ -537,6 +546,50 @@ export const COMMANDS: Command[] = [
     palette: false,
     run: () => a.todayMove(-1),
   },
+
+  // ------------------------------------------------------------ archive
+  {
+    id: 'archive.reopen',
+    title: 'Reopen',
+    hud: 'Reopen',
+    group: 'Archive',
+    scope: 'archive',
+    keys: ['x'],
+    keywords: 'undo done restore unarchive not finished',
+    run: a.archiveReopen,
+  },
+  {
+    id: 'archive.delete',
+    title: 'Delete from the archive',
+    hud: 'Delete',
+    group: 'Archive',
+    scope: 'archive',
+    keys: ['mod+backspace'],
+    run: a.archiveDelete,
+  },
+  {
+    id: 'archive.down',
+    title: 'Next',
+    hud: 'Down',
+    group: 'Archive',
+    scope: 'archive',
+    keys: ['down', 'j'],
+    repeat: true,
+    palette: false,
+    run: () => a.archiveMove(1),
+  },
+  {
+    id: 'archive.up',
+    title: 'Previous',
+    hud: 'Up',
+    group: 'Archive',
+    scope: 'archive',
+    keys: ['up', 'k'],
+    repeat: true,
+    palette: false,
+    run: () => a.archiveMove(-1),
+  },
+
   {
     id: 'session.stop',
     title: 'Stop the work session',

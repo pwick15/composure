@@ -22,7 +22,7 @@ interface Section {
   rows: Row[]
 }
 
-const SECTION_FOR_MODE: Record<Mode, string> = { dump: 'Dump', sort: 'Sort', plan: 'Plan', today: 'Today' }
+const SECTION_FOR_MODE: Record<Mode, string> = { dump: 'Dump', sort: 'Sort', plan: 'Plan', today: 'Today', archive: 'Archive' }
 
 function available(mode: Mode) {
   return COMMANDS.filter((c) => c.palette !== false && (!c.scope || c.scope === mode))

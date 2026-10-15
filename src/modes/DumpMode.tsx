@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useLayoutEffect, useRef, type ClipboardEvent, type KeyboardEvent, type Ref } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, type ClipboardEvent, type KeyboardEvent, type Ref } from 'react'
 import { flushSync } from 'react-dom'
 import { Kbd } from '../components/Kbd'
 import { DoneTag, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
@@ -10,6 +10,7 @@ import { autosize } from '../lib/dom'
 import { EXIT_FAST, keepFocus } from '../lib/motion'
 import { splitLines } from '../lib/text'
 import { sumMinutes } from '../lib/duration'
+import { live } from '../lib/selectors'
 import { childrenOf, draftIndex, isDone, leaves, parentIds, progress, treeOrder } from '../lib/tree'
 import type { Item } from '../lib/types'
 import {
@@ -274,10 +275,12 @@ function EmptyState() {
 }
 
 export function DumpMode() {
-  const items = useStore((s) => s.items)
+  const all = useStore((s) => s.items)
   const selectedId = useStore((s) => s.selectedId)
   const editing = useStore((s) => s.editing)
   const today = todayKey()
+  // Thoughts finished on an earlier day live in the Archive, not here.
+  const items = useMemo(() => live(all, today), [all, today])
   const listRef = useRef<HTMLOListElement>(null)
 
   // An item committed from the draft replaces it in place; skip its entrance animation.

@@ -448,7 +448,7 @@ export function TodayMode() {
             {isActive && <span className="tag tag--focus">now</span>}
             {overtime.has(item.id) && <span className="tag tag--overdue">over time</span>}
             <TimeTag item={item} />
-            {isOverdue(item.slot, today) && <SlotTag item={item} today={today} />}
+            {!item.done && isOverdue(item.slot, today) && <SlotTag item={item} today={today} />}
             {item.quadrant && <QuadrantTag item={item} />}
           </span>
         </motion.li>

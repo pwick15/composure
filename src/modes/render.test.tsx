@@ -1,10 +1,11 @@
 import type { ReactElement } from 'react'
 import { renderToString } from 'react-dom/server'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { todayKey } from '../lib/dates'
+import { addDays, todayKey } from '../lib/dates'
 import type { Item } from '../lib/types'
 import { getState, setState, useStore } from '../state/store'
 import { FocusPill } from '../components/FocusPill'
+import { ArchiveMode } from './ArchiveMode'
 import { DumpMode } from './DumpMode'
 import { PlanMode } from './PlanMode'
 import { SortMode } from './SortMode'
@@ -23,7 +24,7 @@ beforeEach(() => load([]))
 /** Server rendering splits adjacent text nodes with comment markers; drop them to match on text. */
 const render = (view: ReactElement) => renderToString(view).replaceAll('<!-- -->', '')
 
-const base: Item = { id: '', text: '', createdAt: 0, quadrant: null, slot: null, done: false, parentId: null, minutes: null, session: 1 }
+const base: Item = { id: '', text: '', createdAt: 0, quadrant: null, slot: null, done: false, doneAt: null, parentId: null, minutes: null, session: 1 }
 const today = todayKey()
 
 /** A parent with two subtasks that are filed and planned, and a plain thought. */
@@ -127,5 +128,24 @@ describe('screens', () => {
     expect(html).toContain('Session 2')
     expect(html.indexOf('Session 2')).toBeLessThan(html.indexOf('pay rent'))
     expect(html.indexOf('pay rent')).toBeGreaterThan(html.indexOf('book flights'))
+  })
+
+  it('a finished task is struck through, never tagged Overdue, and moves to the Archive the next day', () => {
+    const yesterday = addDays(today, -1)
+    const stamp = (day: string) => new Date(`${day}T09:00:00`).getTime()
+    load([
+      { ...base, id: 'a', text: 'late but done', slot: yesterday, done: true, doneAt: Date.now() },
+      { ...base, id: 'b', text: 'done last week', slot: yesterday, done: true, doneAt: stamp(addDays(today, -3)) },
+      { ...base, id: 'c', text: 'still late', slot: yesterday },
+    ])
+    const dump = render(<DumpMode />)
+    expect(dump).toContain('late but done')
+    expect(dump).not.toContain('done last week') // archived
+    expect(dump.match(/Overdue/g)).toHaveLength(1) // only the one that is really late
+    expect(render(<TodayMode />)).toContain('late but done')
+    const archive = render(<ArchiveMode />)
+    expect(archive).toContain('done last week')
+    expect(archive).not.toContain('late but done')
+    expect(archive).not.toContain('Overdue')
   })
 })

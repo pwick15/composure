@@ -1,5 +1,5 @@
 import { todayKey } from '../lib/dates'
-import { resolvePlanCursor, resolveSortCursor } from '../lib/selectors'
+import { live, resolvePlanCursor, resolveSortCursor } from '../lib/selectors'
 import { useStore, type State } from '../state/store'
 import { Kbd } from './Kbd'
 
@@ -77,10 +77,13 @@ function hintsFor(s: State): Hint[] {
     ]
   }
 
+  if (s.mode === 'archive')
+    return [h('x', 'reopen'), h('mod+backspace', 'delete'), h(['up', 'down'], 'move'), h('shift+4', 'today')]
+
   if (s.trayEditing) return [h('enter', 'save'), h('escape', 'cancel')]
 
   if (s.mode === 'sort') {
-    if (!resolveSortCursor(s.items, s.decks.sort.cursor))
+    if (!resolveSortCursor(s.items, s.decks.sort.cursor, todayKey()))
       return [h('shift+3', 'plan'), h('backspace', 'back'), h(['up', 'down'], 'revisit'), h('mod+k', 'search')]
     return [
       h(['q', 'w', 'a', 's'], 'file'),
@@ -109,11 +112,12 @@ function hintsFor(s: State): Hint[] {
   ]
 }
 
-const MODE_LABEL = { dump: 'DUMP', sort: 'SORT', plan: 'PLAN', today: 'TODAY' }
+const MODE_LABEL = { dump: 'DUMP', sort: 'SORT', plan: 'PLAN', today: 'TODAY', archive: 'ARCHIVE' }
 
 export function StatusBar() {
   const state = useStore()
   const hints = hintsFor(state)
+  const thoughts = live(state.items, todayKey()).length
   return (
     <footer className="statusbar">
       <span className="statusbar__mode">{MODE_LABEL[state.mode]}</span>
@@ -129,7 +133,7 @@ export function StatusBar() {
       </div>
       <div className="statusbar__right">
         <span>
-          {state.items.length} {state.items.length === 1 ? 'thought' : 'thoughts'}
+          {thoughts} {thoughts === 1 ? 'thought' : 'thoughts'}
         </span>
         <span className="statusbar__local" title="Saved in this browser only. Nothing is sent anywhere.">
           <span className="dot" /> saved locally

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { todayKey } from '../lib/dates'
 import type { Run } from '../lib/session'
 import type { Item, Mode, Quadrant, Theme } from '../lib/types'
 
@@ -51,6 +52,9 @@ export interface State {
 
   // today
   todayCursor: string | null
+
+  // archive
+  archiveCursor: string | null
   /** The "add a task" line on Today while it's open, with what the next task will be filed as. */
   todayAdd: {
     quadrant: Quadrant | null
@@ -88,6 +92,7 @@ export const useStore = create<State>()(
         landed: null,
 
         todayCursor: null,
+        archiveCursor: null,
         todayAdd: null,
         run: null,
 
@@ -100,16 +105,19 @@ export const useStore = create<State>()(
       }),
     {
       name: 'composure:v1',
-      version: 4,
+      version: 5,
       // v2 added subtasks (older thoughts are all top-level), v3 time estimates (none yet), v4 work
-      // sessions (everything is in the first) and replaced the single-task focus timer.
+      // sessions (everything is in the first) and replaced the single-task focus timer, v5 the day a
+      // thought was done (what was ticked off today stays on screen today; older ones are archived).
       migrate: (persisted) => {
         const old = persisted as { items?: Partial<Item>[]; focus?: unknown }
+        const today = todayKey()
         const items = (old.items ?? []).map((i) => ({
           ...i,
           parentId: i.parentId ?? null,
           minutes: i.minutes ?? null,
           session: i.session ?? 1,
+          doneAt: i.doneAt ?? (i.done && i.slot === today ? Date.now() : null),
         }))
         const { focus: _focus, ...rest } = old
         return { ...rest, items } as State

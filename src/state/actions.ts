@@ -7,8 +7,12 @@ import { QUADRANTS, QUADRANT_BY_ID } from '../lib/quadrants'
 import { activeId, advance, effMinutes, leftovers, startRun } from '../lib/session'
 import {
   nextInQueue,
+  archiveOrder,
+  archivedIds,
+  live,
   openInSession,
   planGroups,
+  resolveArchiveCursor,
   resolvePlanCursor,
   resolveSortCursor,
   resolveTodayCursor,
@@ -110,6 +114,7 @@ export function makeItem(text: string, parent?: Item): Item {
     quadrant: parent?.quadrant ?? null,
     slot: parent?.slot ?? null,
     done: false,
+    doneAt: null,
     parentId: parent?.id ?? null,
     minutes: null,
     session: parent?.session ?? 1,
@@ -118,9 +123,12 @@ export function makeItem(text: string, parent?: Item): Item {
 
 const findItem = (id: string | null) => (id ? get().items.find((i) => i.id === id) : undefined)
 
+/** The thoughts Dump shows: everything that isn't in the archive. */
+const liveItems = () => live(get().items, todayKey())
+
 /** Previous and next thought as Dump shows them, subtasks included. */
 function neighbours(id: string) {
-  const order = treeOrder(get().items)
+  const order = treeOrder(liveItems())
   const i = order.findIndex((it) => it.id === id)
   return { prev: order[i - 1]?.id ?? null, next: order[i + 1]?.id ?? null }
 }
@@ -139,6 +147,8 @@ function patch(id: string, change: Partial<Item>) {
   if (!item) return
   // A thought that moves to another day starts that day in the first session.
   if (change.slot !== undefined && change.slot !== item.slot && change.session === undefined) change = { ...change, session: 1 }
+  // Ticking a thought off records the day, which is what moves it to the archive tomorrow.
+  if (change.done !== undefined && change.done !== item.done) change = { ...change, doneAt: change.done ? Date.now() : null }
   const same = (Object.keys(change) as (keyof Item)[]).every((k) => item[k] === change[k])
   if (same) return
   commit(get().items.map((i) => (i.id === id ? { ...i, ...change } : i)))
@@ -185,7 +195,8 @@ export function toggleDone(id: string) {
   const kids = childrenOf(get().items, id)
   if (kids.length) {
     const allDone = kids.every((k) => k.done)
-    commit(get().items.map((i) => (i.parentId === id ? { ...i, done: !allDone } : i)))
+    const now = Date.now()
+    commit(get().items.map((i) => (i.parentId === id ? { ...i, done: !allDone, doneAt: allDone ? null : i.done ? i.doneAt : now } : i)))
     return toast(allDone ? 'Marked not done' : `Done, with ${plural(kids.length, 'subtask')}`, 'x')
   }
   patch(id, { done: !item.done })
@@ -198,7 +209,8 @@ export function moveItem(id: string, dir: -1 | 1) {
   const item = items.find((it) => it.id === id)
   if (!item) return
   const key = parentKey(items, item)
-  const siblings = items.filter((it) => parentKey(items, it) === key)
+  const hidden = archivedIds(items, todayKey())
+  const siblings = items.filter((it) => parentKey(items, it) === key && !hidden.has(it.id))
   const other = siblings[siblings.findIndex((it) => it.id === id) + dir]
   if (!other) return
   const a = items.indexOf(item)
@@ -218,7 +230,7 @@ export function indentItem(id: string): boolean {
     toast('Already a subtask. One level deep keeps it simple')
     return false
   }
-  const order = treeOrder(items)
+  const order = treeOrder(live(items, todayKey()))
   const above = order[order.findIndex((i) => i.id === id) - 1]
   if (!above) {
     toast('Nothing above to nest under')
@@ -291,7 +303,7 @@ export function clearAll() {
 /** Adds pasted lines as new items (outside the editor). */
 export function pasteLines(lines: string[]) {
   const s = get()
-  const tail = treeOrder(s.items).at(-1)
+  const tail = treeOrder(liveItems()).at(-1)
   const selected = s.mode === 'dump' ? findItem(s.selectedId) : undefined
   const anchor = selected?.id ?? tail?.parentId ?? tail?.id ?? null
   // Pasting onto a subtask adds more subtasks to its parent.
@@ -308,13 +320,14 @@ function resetCursors() {
     trayEditing: null,
     landed: null,
     todayCursor: null,
+    archiveCursor: null,
     todayAdd: null,
   })
 }
 
 // ---------------------------------------------------------------- modes
 
-const MODES: Mode[] = ['dump', 'sort', 'plan', 'today']
+const MODES: Mode[] = ['dump', 'sort', 'plan', 'today', 'archive']
 
 export function setMode(mode: Mode) {
   if (get().mode === mode) return
@@ -360,7 +373,7 @@ export function startDraft(seed = '') {
   const selected = findItem(s.selectedId)
   if (selected) return set({ editing: draftBelow(selected.id, seed) })
   // Nothing selected: a new thought at the end of the list, never a subtask of the last one.
-  const tail = treeOrder(s.items).at(-1)
+  const tail = treeOrder(liveItems()).at(-1)
   set({ editing: draftAfter(tail ? (parentKey(s.items, tail) ?? tail.id) : null, seed) })
 }
 
@@ -418,15 +431,15 @@ export function editorBackspaceEmpty(target: EditTarget) {
     return
   }
   const { prev } = neighbours(target.id)
-  const at = treeOrder(get().items).findIndex((i) => i.id === target.id)
+  const at = treeOrder(liveItems()).findIndex((i) => i.id === target.id)
   removeItem(target.id)
-  const after = treeOrder(get().items)
+  const after = treeOrder(liveItems())
   const land = prev ?? after[Math.min(at, after.length - 1)]?.id ?? null
   set({ editing: prev ? { kind: 'item', id: prev, caret: 'end' } : null, selectedId: land })
 }
 
 export function editorMove(target: EditTarget, value: string, dir: -1 | 1) {
-  const { items } = get()
+  const items = liveItems()
   let prev: string | null
   let next: string | null
   if (target.kind === 'draft') {
@@ -471,7 +484,7 @@ export function dumpEnter() {
 
 export function dumpSelect(dir: -1 | 1) {
   const { selectedId } = get()
-  const items = treeOrder(get().items)
+  const items = treeOrder(liveItems())
   if (!items.length) return
   const i = items.findIndex((it) => it.id === selectedId)
   const next = i === -1 ? (dir > 0 ? 0 : items.length - 1) : clamp(i + dir, 0, items.length - 1)
@@ -481,9 +494,9 @@ export function dumpSelect(dir: -1 | 1) {
 export function dumpDelete() {
   const item = findItem(get().selectedId)
   if (!item) return
-  const at = treeOrder(get().items).findIndex((i) => i.id === item.id)
+  const at = treeOrder(liveItems()).findIndex((i) => i.id === item.id)
   const kids = removeItem(item.id)
-  const after = treeOrder(get().items)
+  const after = treeOrder(liveItems())
   set({ selectedId: after[Math.min(at, after.length - 1)]?.id ?? null })
   if (!kids) toast(`Deleted "${truncate(item.text)}"`, 'mod+z')
 }
@@ -556,7 +569,7 @@ const isDeck = (m: Mode): m is DeckMode => m === 'sort' || m === 'plan'
 /** The deck's lists in reading order. Group 0 is the queue still waiting for a decision. */
 function groupsFor(m: DeckMode): Item[][] {
   const { items } = get()
-  return m === 'sort' ? sortGroups(items) : planGroups(items, todayKey())
+  return m === 'sort' ? sortGroups(items, todayKey()) : planGroups(items, todayKey())
 }
 
 const inDeck = (m: DeckMode, id: string) => groupsFor(m).some((g) => g.some((i) => i.id === id))
@@ -564,7 +577,7 @@ const inDeck = (m: DeckMode, id: string) => groupsFor(m).some((g) => g.some((i) 
 function currentIdFor(m: DeckMode): string | null {
   const { items, decks } = get()
   const { cursor } = decks[m]
-  return m === 'sort' ? resolveSortCursor(items, cursor) : resolvePlanCursor(items, cursor, todayKey())
+  return m === 'sort' ? resolveSortCursor(items, cursor, todayKey()) : resolvePlanCursor(items, cursor, todayKey())
 }
 
 export const sortCurrent = () => findItem(currentIdFor('sort')) ?? null
@@ -1059,12 +1072,60 @@ export function todayMoveSession(dir: -1 | 1) {
   set({ todayCursor: cur.id }) // the selection stays on the task you moved
 }
 
+// ---------------------------------------------------------------- archive
+
+export function archiveCurrent(): Item | null {
+  const s = get()
+  return findItem(resolveArchiveCursor(s.items, s.archiveCursor, todayKey())) ?? null
+}
+
+export function archiveFocus(id: string) {
+  set({ archiveCursor: id })
+}
+
+export function archiveMove(dir: -1 | 1) {
+  const list = archiveOrder(get().items, todayKey())
+  if (!list.length) return toast('Nothing archived yet')
+  const i = list.findIndex((it) => it.id === archiveCurrent()?.id)
+  set({ archiveCursor: list[clamp(i + dir, 0, list.length - 1)].id })
+}
+
+/** The thought under the cursor, and the one to land on once it leaves the archive. */
+function archiveTarget() {
+  const cur = archiveCurrent()
+  if (!cur) return null
+  const list = archiveOrder(get().items, todayKey())
+  const i = list.findIndex((it) => it.id === cur.id)
+  return { cur, after: (list[i + 1] ?? list[i - 1])?.id ?? null }
+}
+
+/** X: it wasn't finished after all. It leaves the archive and is open again. */
+export function archiveReopen() {
+  const t = archiveTarget()
+  if (!t) return toast('Nothing archived yet')
+  patch(t.cur.id, { done: false })
+  set({ archiveCursor: t.after })
+  toast(`Reopened "${truncate(t.cur.text)}"`, 'mod+z')
+}
+
+export function archiveDelete() {
+  const t = archiveTarget()
+  if (!t) return toast('Nothing archived yet')
+  removeItem(t.cur.id)
+  set({ archiveCursor: t.after })
+  toast(`Deleted "${truncate(t.cur.text)}"`, 'mod+z')
+}
+
 // ---------------------------------------------------------------- navigation
 
 export function jumpTo(id: string) {
   const { mode } = get()
   if (isDeck(mode) && inDeck(mode, id)) return deckFocus(mode, id)
   if (mode === 'today' && todayList(get().items, todayKey()).some((i) => i.id === id)) return todayFocus(id)
+  if (archivedIds(get().items, todayKey()).has(id)) {
+    setMode('archive')
+    return archiveFocus(id)
+  }
   setMode('dump')
   set({ selectedId: id })
 }

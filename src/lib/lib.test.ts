@@ -3,7 +3,18 @@ import { addDays, columnFor, LATER, planColumns, slotLabel } from './dates'
 import { matrixMarkdown, parseBackup, planICS, planMarkdown, thingsURL } from './export'
 import { fmt, stepMinutes } from './duration'
 import { fuzzyBest, fuzzyMatch } from './fuzzy'
-import { itemsInColumn, planGroups, planQueue, sortGroups, sortOrder, timeLeft, todayList } from './selectors'
+import {
+  archiveDays,
+  archivedIds,
+  itemsInColumn,
+  live,
+  planGroups,
+  planQueue,
+  sortGroups,
+  sortOrder,
+  timeLeft,
+  todayList,
+} from './selectors'
 import { splitLines } from './text'
 import { isDone, leaves, progress, treeOrder } from './tree'
 import type { Item } from './types'
@@ -18,6 +29,7 @@ const item = (text: string, extra: Partial<Item> = {}): Item => ({
   quadrant: null,
   slot: null,
   done: false,
+  doneAt: null,
   parentId: null,
   minutes: null,
   session: 1,
@@ -87,7 +99,7 @@ describe('splitLines', () => {
 describe('selectors', () => {
   it('walks unsorted first, then quadrants in grid order', () => {
     const items = [item('a', { quadrant: 'drop' }), item('b'), item('c', { quadrant: 'do' })]
-    expect(sortOrder(items).map((i) => i.text)).toEqual(['b', 'c', 'a'])
+    expect(sortOrder(items, TODAY).map((i) => i.text)).toEqual(['b', 'c', 'a'])
   })
 
   it('groups Plan as queue, seven days, then Later', () => {
@@ -183,7 +195,7 @@ describe('subtasks', () => {
   })
 
   it('Sort and Plan only see the subtasks', () => {
-    expect(sortOrder(all).map((i) => i.text)).toEqual(['Pay rent', 'book hotel', 'book flights'])
+    expect(sortOrder(all, TODAY).map((i) => i.text)).toEqual(['Pay rent', 'book hotel', 'book flights'])
     expect(planQueue(all, TODAY).map((i) => i.text)).toEqual(['Pay rent', 'book hotel'])
   })
 
@@ -243,7 +255,7 @@ describe('time estimates', () => {
       item('queue b', { minutes: 60 }),
       item('queue a', { minutes: 5 }),
     ]
-    const [queue, doList, schedule] = sortGroups(items)
+    const [queue, doList, schedule] = sortGroups(items, TODAY)
     expect(doList.map((i) => i.text)).toEqual(['quick', 'long', 'unknown'])
     expect(schedule.map((i) => i.text)).toEqual(['other'])
     // The unsorted queue stays in Dump order: it is a to-decide list, not a to-do list.
@@ -295,5 +307,78 @@ describe('time estimates', () => {
       ],
     })
     expect(parseBackup(json).map((i) => i.minutes)).toEqual([30, null, null, null, null])
+  })
+})
+
+describe('archive', () => {
+  const at = (day: string, hour = 10) => new Date(`${day}T${String(hour).padStart(2, '0')}:00:00`).getTime()
+  const YESTERDAY = '2026-10-11'
+
+  it('keeps what was done today on screen and files what was done earlier', () => {
+    const items = [
+      item('done today', { slot: TODAY, done: true, doneAt: at(TODAY) }),
+      item('done yesterday', { slot: YESTERDAY, done: true, doneAt: at(YESTERDAY) }),
+      item('open', { slot: TODAY }),
+    ]
+    expect([...archivedIds(items, TODAY)]).toEqual([items[1].id])
+    expect(live(items, TODAY).map((i) => i.text)).toEqual(['done today', 'open'])
+    expect(todayList(items, TODAY).map((i) => i.text).sort()).toEqual(['done today', 'open'])
+  })
+
+  it('a done thought nobody dated is archived at once', () => {
+    expect(archivedIds([item('imported', { done: true })], TODAY).size).toBe(1)
+  })
+
+  it('an overdue thought ticked off today stays in Today until tomorrow', () => {
+    const late = item('late', { slot: YESTERDAY, done: true, doneAt: at(TODAY) })
+    expect(todayList([late], TODAY)).toHaveLength(1)
+    expect(todayList([late], '2026-10-13')).toHaveLength(0)
+    expect(archivedIds([late], '2026-10-13').size).toBe(1)
+  })
+
+  it('a thought with subtasks is archived only when every subtask is', () => {
+    const parent = item('trip')
+    const a = item('flights', { parentId: parent.id, done: true, doneAt: at(YESTERDAY) })
+    const b = item('hotel', { parentId: parent.id })
+    expect(archivedIds([parent, a, b], TODAY).size).toBe(0)
+    const both = [parent, a, { ...b, done: true, doneAt: at(YESTERDAY) }]
+    expect(archivedIds(both, TODAY).size).toBe(3)
+    expect(live(both, TODAY)).toHaveLength(0)
+    // one subtask finished today keeps the whole family on screen
+    expect(archivedIds([parent, a, { ...b, done: true, doneAt: at(TODAY) }], TODAY).size).toBe(0)
+  })
+
+  it('Sort and Plan leave archived thoughts out', () => {
+    const old = item('old', { quadrant: 'do', slot: TODAY, done: true, doneAt: at(YESTERDAY) })
+    expect(sortGroups([old], TODAY).flat()).toHaveLength(0)
+    expect(itemsInColumn([old], TODAY, TODAY)).toHaveLength(0)
+  })
+
+  it('lists the archive by day, latest first', () => {
+    const items = [
+      item('old', { done: true, doneAt: at('2026-10-09') }),
+      item('late', { done: true, doneAt: at(YESTERDAY, 17) }),
+      item('early', { done: true, doneAt: at(YESTERDAY, 8) }),
+    ]
+    const days = archiveDays(items, TODAY)
+    expect(days.map((d) => d.day)).toEqual([YESTERDAY, '2026-10-09'])
+    expect(days[0].items.map((i) => i.text)).toEqual(['late', 'early'])
+  })
+
+  it('a finished thought is not overdue', () => {
+    expect(slotLabel(YESTERDAY, TODAY)).toBe('Overdue · Sun 11 Oct')
+    expect(slotLabel(YESTERDAY, TODAY, true)).toBe('Sun 11 Oct')
+  })
+
+  it('backups keep the day it was done', () => {
+    const json = JSON.stringify({
+      app: 'composure',
+      version: 1,
+      items: [
+        { id: 'a', text: 'a', done: true, doneAt: 123 },
+        { id: 'b', text: 'b', done: false, doneAt: 123 },
+      ],
+    })
+    expect(parseBackup(json).map((i) => i.doneAt)).toEqual([123, null])
   })
 })

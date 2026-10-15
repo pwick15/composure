@@ -8,7 +8,7 @@ import { todayKey } from '../lib/dates'
 import { fmt, sumMinutes } from '../lib/duration'
 import { keepFocus } from '../lib/motion'
 import { QUADRANTS, QUADRANT_BY_ID, type QuadrantMeta } from '../lib/quadrants'
-import { resolveSortCursor, sortGroups } from '../lib/selectors'
+import { live, resolveSortCursor, sortGroups } from '../lib/selectors'
 import { leaves } from '../lib/tree'
 import type { Item } from '../lib/types'
 import { deckFile, deckFocus, setMode } from '../state/actions'
@@ -71,8 +71,8 @@ export function SortMode() {
   const today = todayKey()
 
   // Parents are labels for their subtasks, so only the subtasks are sorted.
-  const items = useMemo(() => leaves(all), [all])
-  const currentId = resolveSortCursor(all, deck.cursor)
+  const items = useMemo(() => leaves(live(all, today)), [all, today])
+  const currentId = resolveSortCursor(all, deck.cursor, today)
   const current = items.find((i) => i.id === currentId) ?? null
   const unsorted = useMemo(() => items.filter((i) => !i.quadrant), [items])
   const ahead = unsorted.filter((i) => i.id !== currentId).length
@@ -89,8 +89,8 @@ export function SortMode() {
 
   // Each quadrant lists its thoughts quickest first.
   const byQuadrant = useMemo(
-    () => Object.fromEntries(sortGroups(all).slice(1).map((list, i) => [QUADRANTS[i].id, list])) as Record<string, Item[]>,
-    [all],
+    () => Object.fromEntries(sortGroups(all, today).slice(1).map((list, i) => [QUADRANTS[i].id, list])) as Record<string, Item[]>,
+    [all, today],
   )
 
   useEffect(() => {

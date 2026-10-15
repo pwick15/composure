@@ -9,14 +9,15 @@ import { Toasts } from './components/Toasts'
 import { TopBar } from './components/TopBar'
 import { useGlobalKeys } from './keyboard/useGlobalKeys'
 import { SPRING } from './lib/motion'
+import { ArchiveMode } from './modes/ArchiveMode'
 import { DumpMode } from './modes/DumpMode'
 import { PlanMode } from './modes/PlanMode'
 import { SortMode } from './modes/SortMode'
 import { TodayMode } from './modes/TodayMode'
 import { useStore } from './state/store'
 
-const VIEWS = { dump: DumpMode, sort: SortMode, plan: PlanMode, today: TodayMode }
-const ORDER = ['dump', 'sort', 'plan', 'today']
+const VIEWS = { dump: DumpMode, sort: SortMode, plan: PlanMode, today: TodayMode, archive: ArchiveMode }
+const ORDER = ['dump', 'sort', 'plan', 'today', 'archive']
 
 export default function App() {
   const mode = useStore((s) => s.mode)

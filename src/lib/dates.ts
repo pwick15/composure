@@ -75,13 +75,14 @@ export function columnFor(slot: Slot | null, today: string): Slot | null {
   return slot
 }
 
-export function slotLabel(slot: Slot, today: string): string {
+/** A finished thought was never late, so with `done` a past day is just a date. */
+export function slotLabel(slot: Slot, today: string, done = false): string {
   if (slot === LATER) return 'Later'
   if (slot === today) return 'Today'
   if (slot === addDays(today, 1)) return 'Tomorrow'
   const d = parseDay(slot)
   const short = `${WEEKDAY[d.getDay()]} ${d.getDate()} ${MONTH[d.getMonth()]}`
-  if (slot < today) return `Overdue · ${short}`
+  if (slot < today && !done) return `Overdue · ${short}`
   return short
 }
 

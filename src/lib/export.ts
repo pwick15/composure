@@ -168,6 +168,7 @@ export function parseBackup(json: string): Item[] {
       quadrant: r.quadrant && QUADRANT_IDS.has(r.quadrant) ? r.quadrant : null,
       slot: typeof r.slot === 'string' ? r.slot : null,
       done: Boolean(r.done),
+      doneAt: r.done && typeof r.doneAt === 'number' ? r.doneAt : null,
       minutes: cleanMinutes(r.minutes),
       session: typeof r.session === 'number' && Number.isInteger(r.session) && r.session >= 1 ? r.session : 1,
       parentId: typeof r.parentId === 'string' && r.parentId !== r.id && ids.has(r.parentId) ? r.parentId : null,

@@ -2,7 +2,7 @@ import { motion } from 'motion/react'
 import { useMemo } from 'react'
 import { todayKey } from '../lib/dates'
 import { keepFocus, SNAP } from '../lib/motion'
-import { planQueue, todayList } from '../lib/selectors'
+import { archiveOrder, live, planQueue, todayList } from '../lib/selectors'
 import { leaves } from '../lib/tree'
 import type { Mode } from '../lib/types'
 import { openPalette, setMode, toggleHelp } from '../state/actions'
@@ -15,6 +15,7 @@ const TABS: { mode: Mode; label: string; key: string }[] = [
   { mode: 'sort', label: 'Sort', key: 'shift+2' },
   { mode: 'plan', label: 'Plan', key: 'shift+3' },
   { mode: 'today', label: 'Today', key: 'shift+4' },
+  { mode: 'archive', label: 'Archive', key: 'shift+5' },
 ]
 
 export function TopBar() {
@@ -22,15 +23,19 @@ export function TopBar() {
   const items = useStore((s) => s.items)
 
   const counts = useMemo(() => {
-    const unsorted = leaves(items).filter((i) => !i.quadrant).length
-    const unplanned = planQueue(items, todayKey()).length
-    const today = todayList(items, todayKey())
+    const key = todayKey()
+    const kept = live(items, key)
+    const unsorted = leaves(kept).filter((i) => !i.quadrant).length
+    const unplanned = planQueue(items, key).length
+    const today = todayList(items, key)
     const open = today.filter((i) => !i.done).length
+    const archived = archiveOrder(items, key).length
     return {
-      dump: items.length ? String(items.length) : '',
-      sort: items.length ? (unsorted ? `${unsorted} left` : '✓') : '',
-      plan: items.length ? (unplanned ? `${unplanned} left` : '✓') : '',
+      dump: kept.length ? String(kept.length) : '',
+      sort: kept.length ? (unsorted ? `${unsorted} left` : '✓') : '',
+      plan: kept.length ? (unplanned ? `${unplanned} left` : '✓') : '',
       today: today.length ? (open ? `${open} left` : '✓') : '',
+      archive: archived ? String(archived) : '',
     }
   }, [items])
 
