@@ -3,6 +3,7 @@ import { addDays, columnFor, LATER, planColumns, slotLabel } from './dates'
 import { matrixMarkdown, parseBackup, planICS, planMarkdown, thingsURL } from './export'
 import { fmt, stepMinutes } from './duration'
 import { fuzzyBest, fuzzyMatch } from './fuzzy'
+import { buildSections } from './palette'
 import {
   archiveDays,
   archivedIds,
@@ -380,5 +381,28 @@ describe('archive', () => {
       ],
     })
     expect(parseBackup(json).map((i) => i.doneAt)).toEqual([123, null])
+  })
+})
+
+describe('search', () => {
+  const mk = (id: string, text: string, done = false): Item => ({ id, text, createdAt: 0, quadrant: null, slot: null, done, doneAt: done ? 1 : null, parentId: null, minutes: null, session: 1 })
+
+  it('lists finished thoughts in their own Archive section, after the open ones', () => {
+    const sections = buildSections('report', 'dump', [mk('a', 'write report'), mk('b', 'file report', true)])
+    const titles = sections.map((s) => s.title)
+    expect(titles.indexOf('Archive')).toBeGreaterThan(titles.indexOf('Thoughts'))
+    const rows = (t: string) => sections.find((s) => s.title === t)!.rows.map((r) => (r.kind === 'item' ? r.item.text : ''))
+    expect(rows('Thoughts')).toEqual(['write report'])
+    expect(rows('Archive')).toEqual(['file report'])
+  })
+
+  it('has no Archive section when nothing finished matches', () => {
+    const titles = buildSections('report', 'dump', [mk('a', 'write report'), mk('b', 'call mum', true)]).map((s) => s.title)
+    expect(titles).not.toContain('Archive')
+  })
+
+  it('a finished match never pushes the "add as a thought" row below the real results', () => {
+    const sections = buildSections('zzzz', 'dump', [mk('b', 'zzzz old', true)])
+    expect(sections[0].title).toBe('New')
   })
 })
