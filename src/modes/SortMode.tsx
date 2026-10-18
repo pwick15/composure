@@ -32,6 +32,7 @@ function QuadrantBox({ meta, items, currentId, landed }: QuadrantProps) {
       onMouseDown={keepFocus}
       onClick={() => deckFile('sort', meta.id)}
       aria-label={`${meta.title}: ${meta.blurb}`}
+      title={meta.hint}
     >
       {flash !== null && <span key={flash} className="quad__flash" />}
       <header className="quad__head">

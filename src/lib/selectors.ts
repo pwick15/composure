@@ -113,7 +113,7 @@ export function visibleInDump(all: Item[], showAll: boolean): Item[] {
 
 // ---------------------------------------------------------------- sort
 
-/** Sort's lists in reading order: the unsorted queue, then Do, Schedule, Delegate, Drop. */
+/** Sort's lists in reading order: the unsorted queue, then Do, Schedule, Someone else's, Let go. */
 export function sortGroups(all: Item[]): Item[][] {
   const items = leaves(live(all))
   return [

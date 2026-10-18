@@ -140,7 +140,7 @@ describe('export', () => {
     expect(md).toContain('## Later\n- [ ] Someday thing')
     expect(md).toContain('## Not planned yet\n- [ ] Unplanned (Do)')
     expect(md).not.toContain('Dropped')
-    expect(matrixMarkdown(items)).toContain('## Drop (Not urgent · Not important)\n- [ ] Dropped')
+    expect(matrixMarkdown(items)).toContain('## Let go (Not urgent · Not important)\n- [ ] Dropped')
   })
 
   it('writes valid all-day iCalendar events with escaping', () => {

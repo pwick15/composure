@@ -317,7 +317,7 @@ function Composer() {
               data-q={id}
               data-on={add?.quadrant === id || undefined}
               data-cursor={cursorAt(0, i) || undefined}
-              title={QUADRANT_BY_ID[id].blurb}
+              title={`${QUADRANT_BY_ID[id].blurb}. ${QUADRANT_BY_ID[id].hint}`}
               onClick={() => todayAddQuadrant(id)}
             >
               {QUADRANT_BY_ID[id].title}
