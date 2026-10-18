@@ -16,6 +16,8 @@ const h = (keys: string | string[], label: string, literal = false): Hint => ({
 })
 
 function hintsFor(s: State): Hint[] {
+  if (s.trayEditing) return [h('enter', 'save'), h('escape', 'cancel')]
+
   if (s.mode === 'dump') {
     if (s.editing)
       return [
@@ -79,6 +81,7 @@ function hintsFor(s: State): Hint[] {
     return [
       h('f', 'start session'),
       h('n', 'add'),
+      h('e', 'edit'),
       h(['up', 'down'], 'move'),
       h('mod+k', 'done'),
       h('mod+s', 'when'),
@@ -89,9 +92,7 @@ function hintsFor(s: State): Hint[] {
   }
 
   if (s.mode === 'archive')
-    return [h('backspace', 'back'), h('mod+k', 'reopen'), h('mod+backspace', 'delete'), h(['up', 'down'], 'move')]
-
-  if (s.trayEditing) return [h('enter', 'save'), h('escape', 'cancel')]
+    return [h('backspace', 'back'), h('mod+k', 'reopen'), h('mod+e', 'edit'), h('mod+backspace', 'delete'), h(['up', 'down'], 'move')]
 
   if (s.mode === 'sort') {
     if (!resolveSortCursor(s.items, s.decks.sort.cursor))

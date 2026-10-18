@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { Kbd } from '../components/Kbd'
+import { RowEditor } from '../components/RowEditor'
 import { ParentRef, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
 import { isOverdue, longDate, todayKey } from '../lib/dates'
 import { feedback } from '../keyboard/feedback'
@@ -348,6 +349,7 @@ export function TodayMode() {
   const items = useStore((s) => s.items)
   const adding = useStore((s) => s.todayAdd !== null)
   const cursor = useStore((s) => s.todayCursor)
+  const editing = useStore((s) => s.trayEditing)
   const run = useStore((s) => s.run)
   const today = todayKey()
 
@@ -404,7 +406,7 @@ export function TodayMode() {
             [ ]
           </span>
           <span className="row__main">
-            <span className="row__text">{item.text}</span>
+            {editing === item.id ? <RowEditor item={item} /> : <span className="row__text">{item.text}</span>}
             <ParentRef item={item} className="parent-ref--row" />
           </span>
           <span className="row__meta">

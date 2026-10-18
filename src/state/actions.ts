@@ -888,6 +888,18 @@ export function trayEdit() {
   if (cur) set({ trayEditing: cur.id })
 }
 
+/** ⌘E on every screen: edit the text of whatever is selected, where it is. */
+export function editCurrent() {
+  const { mode, selectedId } = get()
+  if (mode === 'dump') {
+    if (!findItem(selectedId)) return toast('Select a thought first')
+    return startEdit(selectedId!)
+  }
+  const cur = mode === 'today' ? todayCurrent() : mode === 'archive' ? archiveCurrent() : trayCurrent()
+  if (!cur) return toast('Nothing selected')
+  set({ trayEditing: cur.id })
+}
+
 export function trayCommit(id: string, value: string) {
   const text = value.trim()
   if (text) updateText(id, text)

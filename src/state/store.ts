@@ -51,6 +51,7 @@ export interface State {
 
   // sort / plan
   decks: { sort: Deck; plan: Deck }
+  /** The thought whose text is being edited in place on Sort, Plan, Today or the Archive. */
   trayEditing: string | null
   trayExit: TrayExit
   landed: { id: string; n: number } | null

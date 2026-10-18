@@ -38,6 +38,17 @@ describe('findCommand', () => {
   })
 })
 
+describe('mod+E', () => {
+  it('edits the selected thought on every screen, and bare E does so on Today only besides Sort and Plan', () => {
+    const modE = key({ key: 'e', code: 'KeyE', ...mod })
+    for (const m of MODES) expect(findCommand(modE, m, false)?.id).toBe('task.edit')
+    const e = key({ key: 'e', code: 'KeyE' })
+    expect(findCommand(e, 'today', false)?.id).toBe('today.edit')
+    expect(findCommand(e, 'dump', false)).toBeUndefined()
+    expect(findCommand(e, 'archive', false)).toBeUndefined()
+  })
+})
+
 describe('mod+S', () => {
   it('sets the day on every screen and while typing, so the browser never offers to save the page', () => {
     const modS = key({ key: 's', code: 'KeyS', ...mod })

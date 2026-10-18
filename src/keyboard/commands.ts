@@ -155,6 +155,15 @@ export const COMMANDS: Command[] = [
     run: a.whenOpen,
   },
   {
+    id: 'task.edit',
+    title: 'Edit the selected thought\'s text',
+    hud: 'Edit',
+    group: 'General',
+    keys: ['mod+e'],
+    keywords: 'rename change text reword',
+    run: a.editCurrent,
+  },
+  {
     id: 'task.delete',
     title: 'Delete the selected thought',
     hud: 'Delete',
@@ -540,6 +549,16 @@ export const COMMANDS: Command[] = [
     keys: ['n'],
     keywords: 'new create task quick add',
     run: a.todayAddOpen,
+  },
+  {
+    id: 'today.edit',
+    title: 'Edit text',
+    hud: 'Edit',
+    group: 'Today',
+    scope: 'today',
+    keys: ['e'],
+    keywords: 'rename change reword',
+    run: a.editCurrent,
   },
   {
     id: 'today.defer',

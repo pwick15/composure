@@ -81,6 +81,19 @@ describe('screens', () => {
     expect(html).toContain('also needs day and time')
   })
 
+  it('Today and the Archive swap a row for a text box while its text is being edited', () => {
+    seed()
+    expect(render(<TodayMode />)).not.toContain('Edit text')
+    Object.assign(snapshot, { trayEditing: 'r' })
+    setState({ trayEditing: 'r', todayCursor: 'r' })
+    const html = render(<TodayMode />)
+    expect(html).toContain('aria-label="Edit text"')
+    expect(html).toContain('pay rent') // the text is in the box
+    Object.assign(snapshot, { trayEditing: 'h' })
+    setState({ trayEditing: 'h' })
+    expect(render(<ArchiveMode />)).toContain('aria-label="Edit text"')
+  })
+
   it('Sort puts the subtasks in quadrants, not the parent, each pointing back at it', () => {
     seed()
     const html = render(<SortMode />)

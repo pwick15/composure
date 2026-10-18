@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { Kbd } from '../components/Kbd'
+import { RowEditor } from '../components/RowEditor'
 import { ParentRef, QuadrantTag, TimeTag } from '../components/Tags'
 import { addDays, longDate, todayKey } from '../lib/dates'
 import { fmt, sumMinutes } from '../lib/duration'
@@ -23,6 +24,7 @@ export function ArchiveMode() {
   const items = useStore((s) => s.items)
   const cursor = useStore((s) => s.archiveCursor)
   const from = useStore((s) => s.archiveFrom)
+  const editing = useStore((s) => s.trayEditing)
   const today = todayKey()
 
   const days = useMemo(() => archiveDays(items), [items])
@@ -67,7 +69,7 @@ export function ArchiveMode() {
           [x]
         </span>
         <span className="row__main">
-          <span className="row__text">{item.text}</span>
+          {editing === item.id ? <RowEditor item={item} /> : <span className="row__text">{item.text}</span>}
           <ParentRef item={item} className="parent-ref--row" />
         </span>
         <span className="row__meta">

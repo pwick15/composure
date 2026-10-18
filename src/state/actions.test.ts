@@ -1269,3 +1269,59 @@ describe('dump: → fills in what is missing', () => {
     expect(getState().dumpFinish).toBeNull()
   })
 })
+
+describe('edit text on every screen (⌘E)', () => {
+  const task = (text: string) => getState().items.find((i) => i.text === text)!
+
+  it('Dump: opens the selected thought for editing, or says to select one', () => {
+    dump('a')
+    setState({ selectedId: null })
+    a.editCurrent()
+    expect(getState().editing).toBeNull()
+    expect(getState().toasts.at(-1)?.text).toContain('Select')
+    setState({ selectedId: task('a').id })
+    a.editCurrent()
+    expect(getState().editing).toMatchObject({ kind: 'item', id: task('a').id })
+  })
+
+  it('Sort and Plan: edit the card', () => {
+    dump('a')
+    a.setMode('sort')
+    a.editCurrent()
+    expect(getState().trayEditing).toBe(task('a').id)
+    a.trayCommit(task('a').id, 'a2')
+    a.setMode('plan')
+    a.editCurrent()
+    expect(getState().trayEditing).toBe(task('a2').id)
+  })
+
+  it('Today: edits the selected task in place, and saving changes only its text', () => {
+    dump('a', 'b')
+    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do' as const, slot: todayKey(), minutes: 15 })) })
+    a.setMode('today')
+    a.todayFocus(task('b').id)
+    a.editCurrent()
+    expect(getState().trayEditing).toBe(task('b').id)
+    a.trayCommit(task('b').id, ' b, reworded ')
+    expect(getState().trayEditing).toBeNull()
+    expect(task('b, reworded')).toMatchObject({ quadrant: 'do', minutes: 15 })
+    expect(a.todayCurrent()?.text).toBe('b, reworded')
+  })
+
+  it('Archive: edits a finished thought', () => {
+    dump('a')
+    a.toggleDone(task('a').id)
+    a.setMode('archive')
+    a.editCurrent()
+    expect(getState().trayEditing).toBe(task('a').id)
+    a.trayCancel()
+    expect(task('a').text).toBe('a')
+  })
+
+  it('says so when there is nothing selected', () => {
+    a.setMode('today')
+    a.editCurrent()
+    expect(getState().trayEditing).toBeNull()
+    expect(getState().toasts.at(-1)?.text).toContain('Nothing selected')
+  })
+})
