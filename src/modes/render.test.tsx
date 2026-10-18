@@ -42,11 +42,43 @@ function seed() {
 describe('screens', () => {
   it('Dump shows subtasks as a tree with progress and the parent total', () => {
     seed()
+    // Give the open subtask no day, so it still needs sorting out (planned ones step aside).
+    load(getState().items.map((i) => (i.id === 'f' ? { ...i, slot: null } : i)))
     const html = render(<DumpMode />)
     expect(html).toContain('└') // the open subtask; the finished one is in the archive
     expect(html).not.toContain('book hotel')
     expect(html).toContain('1/2')
     expect(html).toContain('~30m') // what's left of the parent
+  })
+
+  it('Dump tucks away what is sorted and planned, and says how many', () => {
+    seed() // "book flights" has a priority, a day and a time; "pay rent" has no time
+    const html = render(<DumpMode />)
+    expect(html).toContain('pay rent')
+    expect(html).not.toContain('book flights')
+    expect(html).not.toContain('Plan trip')
+    expect(html).toContain('show 1 sorted and planned')
+  })
+
+  it('Dump says so when everything is sorted and planned', () => {
+    load([{ ...base, id: 'a', text: 'call mum', quadrant: 'do', slot: today, minutes: 15 }])
+    const html = render(<DumpMode />)
+    expect(html).toContain('All clear.')
+    expect(html).not.toContain('call mum')
+    setState({ showPlanned: true })
+    Object.assign(snapshot, { showPlanned: true })
+    expect(render(<DumpMode />)).toContain('call mum')
+  })
+
+  it('Dump opens the fill-in under the thought, with a numbered option for each choice', () => {
+    load([{ ...base, id: 'a', text: 'call mum' }])
+    Object.assign(snapshot, { dumpFinish: { id: 'a', step: 'quadrant', col: 1 } })
+    setState({ dumpFinish: { id: 'a', step: 'quadrant', col: 1 } })
+    const html = render(<DumpMode />)
+    expect(html).toContain('priority')
+    expect(html.match(/class="attr"/g)).toHaveLength(4)
+    expect(html.match(/data-cursor="true"/g)).toHaveLength(1)
+    expect(html).toContain('also needs day and time')
   })
 
   it('Sort puts the subtasks in quadrants, not the parent, each pointing back at it', () => {

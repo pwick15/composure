@@ -1,5 +1,6 @@
 import { planColumns, todayKey } from '../lib/dates'
 import { fmt, PRESETS } from '../lib/duration'
+import { finishOptions } from '../lib/finish'
 import { QUADRANTS } from '../lib/quadrants'
 import type { Mode } from '../lib/types'
 import * as a from '../state/actions'
@@ -22,6 +23,8 @@ export interface Command {
   keywords?: string
   /** Only active in this mode. Global when omitted. */
   scope?: Mode
+  /** Only active while this holds (for keys that mean something else while a picker is open). */
+  when?: () => boolean
   /** Listed in the command palette (default true). */
   palette?: boolean
   /** Listed in the shortcut sheet (default true when it has keys). */
@@ -159,6 +162,71 @@ export const COMMANDS: Command[] = [
     keys: ['mod+backspace'],
     keywords: 'remove trash',
     run: a.deleteCurrent,
+  },
+
+  // ------------------------------------------------------------ dump: fill in what's missing
+  // While the fill-in is open these take over the keys Dump otherwise uses (↑↓ select, ↵ edit, ⌫ delete).
+  {
+    id: 'dump.finish',
+    title: 'Fill in what is missing: priority, day, time',
+    hud: 'Fill in',
+    group: 'Dump',
+    scope: 'dump',
+    when: () => !a.finishIsOpen(),
+    keys: ['right'],
+    keywords: 'sort plan priority urgent important day when time estimate how long complete clear',
+    run: a.finishOpen,
+  },
+  ...[1, 2, 3, 4, 5, 6, 7, 8].map(
+    (n): Command => ({
+      id: `dump.finish.${n}`,
+      title: `Pick option ${n}`,
+      hud: () => {
+        const f = getState().dumpFinish
+        return f ? (finishOptions(f.step, todayKey())[n - 1]?.label ?? String(n)) : String(n)
+      },
+      group: 'Dump',
+      scope: 'dump',
+      when: a.finishIsOpen,
+      keys: [String(n)],
+      palette: false,
+      sheet: false,
+      run: () => a.finishPick(n),
+    }),
+  ),
+  ...(
+    [
+      ['left', 'Option ←', () => a.finishArrow(-1)],
+      ['right', 'Option →', () => a.finishArrow(1)],
+      ['up', 'Previous field', () => a.finishStep(-1)],
+      ['down', 'Next field', () => a.finishStep(1)],
+      ['enter', 'Pick', a.finishEnter],
+      ['escape', 'Close', a.finishClose],
+      ['backspace', 'Close', a.finishClose],
+    ] as const
+  ).map(
+    ([key, hud, run]): Command => ({
+      id: `dump.finish.${key}`,
+      title: hud,
+      hud,
+      group: 'Dump',
+      scope: 'dump',
+      when: a.finishIsOpen,
+      keys: [key],
+      repeat: key !== 'enter' && key !== 'escape' && key !== 'backspace',
+      palette: false,
+      sheet: false,
+      run,
+    }),
+  ),
+  {
+    id: 'dump.planned',
+    title: () => (getState().showPlanned ? 'Hide sorted and planned thoughts' : 'Show sorted and planned thoughts'),
+    hud: 'Planned',
+    group: 'Dump',
+    scope: 'dump',
+    keywords: 'hide show cleared done finished tucked away',
+    run: a.togglePlanned,
   },
 
   // ------------------------------------------------------------ dump
@@ -674,6 +742,8 @@ export const SHEET_HINTS: SheetHint[] = [
   { group: 'General', title: 'Start typing on any screen to search', keys: ['a–z'], literal: true },
   { group: 'General', title: 'Paste a list: one thought per line', keys: ['mod+v'] },
   { group: 'Modes', title: 'Previous / next screen', keys: ['alt+left', 'alt+right'] },
+  { group: 'Dump', title: 'While filling in: pick by number, or ← → and ↵', keys: ['1–8'], literal: true },
+  { group: 'Dump', title: 'While filling in: another missing field', keys: ['up', 'down'] },
   { group: 'Dump', title: 'While typing: save and start the next', keys: ['enter'] },
   { group: 'Dump', title: 'While typing: nest / un-nest this line', keys: ['tab', 'shift+tab'] },
   { group: 'Dump', title: 'While typing: save, then a subtask under it', keys: ['alt+enter'] },
@@ -691,7 +761,7 @@ const parsed = new Map(COMMANDS.map((c) => [c.id, (c.keys ?? []).map(parseCombo)
 
 /** Finds the command bound to this key press. Mode-scoped bindings win over global ones. */
 export function findCommand(e: KeyboardEvent, mode: Mode, typing: boolean): Command | undefined {
-  const candidates = COMMANDS.filter((c) => (!typing || c.inInput) && (!c.scope || c.scope === mode))
+  const candidates = COMMANDS.filter((c) => (!typing || c.inInput) && (!c.scope || c.scope === mode) && (!c.when || c.when()))
   const hits = candidates.filter((c) => parsed.get(c.id)!.some((combo) => matchCombo(e, combo)))
   return hits.find((c) => c.scope) ?? hits[0]
 }

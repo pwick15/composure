@@ -1,6 +1,7 @@
 import { addDays, columnFor, planColumns, slotLabel, todayKey } from '../lib/dates'
 import { mergeItems } from '../lib/export'
 import { askForNotifications, notificationsBlocked, notify } from '../lib/notify'
+import { finishOptions } from '../lib/finish'
 import { fmt, PRESETS, stepMinutes } from '../lib/duration'
 import { uid } from '../lib/id'
 import { QUADRANTS, QUADRANT_BY_ID } from '../lib/quadrants'
@@ -16,9 +17,14 @@ import {
   resolvePlanCursor,
   resolveSortCursor,
   resolveTodayCursor,
+  GAPS,
+  gapsOf,
+  settled,
   sortGroups,
   todayList,
   todaySessions,
+  visibleInDump,
+  type Gap,
 } from '../lib/selectors'
 import { childrenOf, draftIndex, isDone, lastInBlock, parentKey, treeOrder } from '../lib/tree'
 import type { Item, Mode, Quadrant, Slot } from '../lib/types'
@@ -78,7 +84,10 @@ export function undo() {
   const prev = s.past.at(-1)
   if (!prev) return toast('Nothing to undo')
   const changed = changedId(prev, s.items)
-  set({ items: prev, past: s.past.slice(0, -1), future: [s.items, ...s.future], editing: null })
+  const hidden = settled(s.items)
+  set({ items: prev, past: s.past.slice(0, -1), future: [s.items, ...s.future], editing: null, dumpFinish: null })
+  // A thought that undo brings back out of hiding is selected, so you can see what came back.
+  if (s.mode === 'dump' && changed && hidden.has(changed) && liveItems().some((i) => i.id === changed)) set({ selectedId: changed })
   // In Sort and Plan, the thought that changed comes back to the tray, ready to re-file.
   if (isDeck(s.mode) && changed && inDeck(s.mode, changed)) {
     setDeck(s.mode, { trail: get().decks[s.mode].trail.filter((id) => id !== changed) })
@@ -123,8 +132,8 @@ export function makeItem(text: string, parent?: Item): Item {
 
 const findItem = (id: string | null) => (id ? get().items.find((i) => i.id === id) : undefined)
 
-/** The thoughts Dump shows: everything that isn't in the archive. */
-const liveItems = () => live(get().items)
+/** The thoughts Dump shows: everything open, less the ones already sorted and planned (unless you asked to see them). */
+const liveItems = () => visibleInDump(get().items, get().showPlanned)
 
 /** Previous and next thought as Dump shows them, subtasks included. */
 function neighbours(id: string) {
@@ -212,8 +221,8 @@ export function moveItem(id: string, dir: -1 | 1) {
   const item = items.find((it) => it.id === id)
   if (!item) return
   const key = parentKey(items, item)
-  const hidden = archivedIds(items)
-  const siblings = items.filter((it) => parentKey(items, it) === key && !hidden.has(it.id))
+  const shown = new Set(liveItems().map((it) => it.id))
+  const siblings = items.filter((it) => parentKey(items, it) === key && shown.has(it.id))
   const other = siblings[siblings.findIndex((it) => it.id === id) + dir]
   if (!other) return
   const a = items.indexOf(item)
@@ -325,6 +334,7 @@ function resetCursors() {
     todayCursor: null,
     archiveCursor: null,
     todayAdd: null,
+    dumpFinish: null,
   })
 }
 
@@ -375,6 +385,7 @@ function draftSub(id: string): EditTarget {
 }
 
 export function startDraft(seed = '') {
+  set({ dumpFinish: null })
   const s = get()
   const selected = findItem(s.selectedId)
   if (selected) return set({ editing: draftBelow(selected.id, seed) })
@@ -384,7 +395,7 @@ export function startDraft(seed = '') {
 }
 
 export function startEdit(id: string, caret: 'start' | 'end' = 'end') {
-  set({ editing: { kind: 'item', id, caret }, selectedId: id })
+  set({ editing: { kind: 'item', id, caret }, selectedId: id, dumpFinish: null })
 }
 
 export function sameTarget(e: Editing, target: EditTarget): boolean {
@@ -500,6 +511,7 @@ export function dumpSelect(dir: -1 | 1) {
 export function dumpDelete() {
   const item = findItem(get().selectedId)
   if (!item) return
+  set({ dumpFinish: null })
   const at = treeOrder(liveItems()).findIndex((i) => i.id === item.id)
   const kids = removeItem(item.id)
   const after = treeOrder(liveItems())
@@ -556,6 +568,7 @@ export function editorIndent(target: EditTarget, value: string, dir: 1 | -1) {
 export function dumpToggleDone() {
   const { selectedId } = get()
   if (!selectedId) return toast('Select a thought first')
+  set({ dumpFinish: null })
   const { prev, next } = neighbours(selectedId)
   toggleDone(selectedId)
   const left = new Set(liveItems().map((i) => i.id))
@@ -564,6 +577,120 @@ export function dumpToggleDone() {
 
 export function dumpEscape() {
   set({ selectedId: null })
+}
+
+// ---------------------------------------------------------------- dump: fill in what's missing
+//
+// → on a thought asks for whatever it lacks: a priority, then a day, then a time. The number keys
+// pick (the same numbers as Sort and Plan; ←/→ and ↵ work too) and it applies at once, moving on
+// to the next thing missing. When nothing is missing the thought has been dealt with, so it
+// leaves Dump. ↑/↓ skip to another missing field; ← from the first option, ⌫ or esc close.
+// ⌘Z undoes a pick, and a thought on a parent fills in every open subtask that lacks it.
+
+/** The thoughts a fill-in applies to: a parent's subtasks that lack something, else the thought itself. */
+function finishTargets(id: string): Item[] {
+  const items = live(get().items)
+  const item = items.find((i) => i.id === id)
+  if (!item) return []
+  const kids = childrenOf(items, id)
+  return (kids.length ? kids : [item]).filter((t) => gapsOf(t).length)
+}
+
+/** The fields still missing somewhere in the targets, in the order they are asked. */
+const finishNeeds = (id: string): Gap[] => {
+  const targets = finishTargets(id)
+  return GAPS.filter((g) => targets.some((t) => gapsOf(t).includes(g)))
+}
+
+/** Whether the fill-in is open on a thought that is still there. */
+export const finishIsOpen = () => {
+  const f = get().dumpFinish
+  return f !== null && finishNeeds(f.id).includes(f.step)
+}
+
+/** → : start filling in the selected thought. */
+export function finishOpen() {
+  const id = get().selectedId
+  if (!findItem(id)) return toast('Select a thought first')
+  const [step] = finishNeeds(id!)
+  if (!step) return toast('Nothing missing. It has a priority, a day and a time')
+  set({ dumpFinish: { id: id!, step, col: 0 } })
+}
+
+export const finishClose = () => set({ dumpFinish: null })
+
+/** ←/→ along the options. ← from the first one closes. */
+export function finishArrow(dir: -1 | 1) {
+  const f = get().dumpFinish
+  if (!f) return
+  const col = f.col + dir
+  if (col < 0) return finishClose()
+  const last = finishOptions(f.step, todayKey()).length - 1
+  set({ dumpFinish: { ...f, col: Math.min(col, last) } })
+}
+
+/** ↑/↓: jump to the previous or next field that's missing. */
+export function finishStep(dir: -1 | 1) {
+  const f = get().dumpFinish
+  if (!f) return
+  const needs = finishNeeds(f.id)
+  const step = needs[needs.indexOf(f.step) + dir]
+  if (step) set({ dumpFinish: { ...f, step, col: 0 } })
+}
+
+/** ↵: pick the highlighted option. */
+export function finishEnter() {
+  const f = get().dumpFinish
+  if (f) finishPick(f.col + 1)
+}
+
+/** 1–8: pick that option and apply it to everything that lacks it. */
+export function finishPick(n: number) {
+  const f = get().dumpFinish
+  const option = f && finishOptions(f.step, todayKey())[n - 1]
+  const item = f && findItem(f.id)
+  if (!f || !option || !item) return
+  const order = treeOrder(liveItems())
+  transact(() => finishTargets(f.id).filter((t) => gapsOf(t).includes(f.step)).forEach((t) => patch(t.id, option.change)))
+  toast(`"${truncate(item.text, 24)}" → ${option.label}`, 'mod+z')
+
+  const needs = finishNeeds(f.id)
+  if (needs.length) {
+    // Carry on with the next thing missing, else back to an earlier one skipped over.
+    const step = needs.find((g) => GAPS.indexOf(g) > GAPS.indexOf(f.step)) ?? needs[0]
+    return set({ dumpFinish: { id: f.id, step, col: 0 } })
+  }
+  set({ dumpFinish: null })
+  landBeside(f.id, order)
+}
+
+/** After something else changed the thought (⌘S gave it a day): ask for what's still missing, or close. */
+function finishResync() {
+  const f = get().dumpFinish
+  if (!f) return
+  const needs = finishNeeds(f.id)
+  if (needs.includes(f.step)) return
+  set({ dumpFinish: needs.length ? { ...f, step: needs[0], col: 0 } : null })
+}
+
+/** If a thought just left Dump's list, select its neighbour (next one down, else the one above). */
+function landBeside(id: string, before: Item[]) {
+  const shown = new Set(liveItems().map((i) => i.id))
+  if (shown.has(id)) return
+  const at = before.findIndex((i) => i.id === id)
+  const near = [...before.slice(at + 1), ...before.slice(0, at).reverse()].find((i) => shown.has(i.id))
+  set({ selectedId: near?.id ?? null })
+}
+
+/** Shows or hides the thoughts that are sorted and planned. */
+export function togglePlanned() {
+  const showPlanned = !get().showPlanned
+  set({ showPlanned })
+  if (!showPlanned) {
+    const selected = get().selectedId
+    if (selected && !liveItems().some((i) => i.id === selected)) set({ selectedId: null, dumpFinish: null })
+  }
+  toast(showPlanned ? 'Showing sorted and planned thoughts' : 'Sorted and planned thoughts hidden')
 }
 
 // ---------------------------------------------------------------- sort + plan decks
@@ -1214,6 +1341,7 @@ export function whenApply(slot: Slot | null) {
   if (!cur) return
   const today = todayKey()
   const mode = get().mode
+  const dumpOrder = mode === 'dump' ? treeOrder(liveItems()) : []
   if (mode === 'plan' && cur.id === planCurrent()?.id && w.ids.length === 1) deckFile('plan', slot)
   else {
     const list = mode === 'today' ? todayList(get().items, today) : []
@@ -1223,6 +1351,10 @@ export function whenApply(slot: Slot | null) {
       set({ todayCursor: (list[i + 1] ?? list[i - 1])?.id ?? null })
       sessionSync()
     }
+  }
+  if (mode === 'dump') {
+    finishResync()
+    landBeside(cur.id, dumpOrder)
   }
   toast(`"${truncate(cur.text, 24)}" → ${slot === null ? 'no day' : slotLabel(slot, today)}`, 'mod+z')
 }
@@ -1238,7 +1370,8 @@ export function jumpTo(id: string) {
     return archiveFocus(id)
   }
   setMode('dump')
-  set({ selectedId: id })
+  // Found by search but tucked away in Dump: show everything so it can be seen.
+  set({ selectedId: id, showPlanned: get().showPlanned || settled(get().items).has(id) })
 }
 
 // ---------------------------------------------------------------- overlays + settings

@@ -26,9 +26,18 @@ function hintsFor(s: State): Hint[] {
         h(['up', 'down'], 'move'),
         h('backspace', 'empty: step back'),
       ]
+    if (s.dumpFinish)
+      return [
+        h('1–8', 'pick', true),
+        h(['left', 'right'], 'option'),
+        h('enter', 'pick'),
+        h(['up', 'down'], 'other field'),
+        h('escape', 'close'),
+      ]
     if (s.selectedId)
       return [
         h('enter', 'edit'),
+        h('right', 'fill in'),
         h('alt+enter', 'subtask'),
         h(['tab', 'shift+tab'], 'nest'),
         h('backspace', 'delete'),

@@ -428,7 +428,65 @@
   background: color-mix(in srgb, var(--accent) 10%, var(--bg));
 }
 
+/* ------------------------------------------------------------------ fill in what's missing */
+
+.row[data-finishing] .row__index {
+  grid-row: span 2;
+}
+
+.row__fill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  font: 11px/20px var(--font-mono);
+  color: var(--text-3);
+}
+
+.attr__n {
+  color: var(--text-3);
+}
+
+.finish__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding-left: 68px;
+  font: 11px/20px var(--font-mono);
+  color: var(--text-3);
+}
+
+.finish__close {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.dump-clear {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 28px;
+  padding: 28px 24px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-2);
+}
+
+.dump-clear strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
 @media (max-width: 720px) {
+  .finish__foot {
+    padding-left: 0;
+  }
   .today-add__attrs {
     padding-left: 14px;
   }

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { todayKey } from '../lib/dates'
 import type { Run } from '../lib/session'
+import type { Gap } from '../lib/selectors'
 import type { Item, Mode, Quadrant, Slot, Theme } from '../lib/types'
 
 export type Editing =
@@ -39,10 +40,14 @@ export interface State {
   mode: Mode
   theme: Theme
   hud: boolean
+  /** Dump lists thoughts that are sorted and planned too, instead of tucking them away. */
+  showPlanned: boolean
 
   // dump
   selectedId: string | null
   editing: Editing
+  /** → on a thought in Dump: filling in what it lacks. `step` is what's being asked, `col` the highlighted option. */
+  dumpFinish: { id: string; step: Gap; col: number } | null
 
   // sort / plan
   decks: { sort: Deck; plan: Deck }
@@ -86,9 +91,11 @@ export const useStore = create<State>()(
         mode: 'dump',
         theme: 'system',
         hud: true,
+        showPlanned: false,
 
         selectedId: null,
         editing: null,
+        dumpFinish: null,
 
         decks: { sort: freshDeck(), plan: freshDeck() },
         trayEditing: null,
@@ -129,7 +136,7 @@ export const useStore = create<State>()(
         return { ...rest, items } as State
       },
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ items: s.items, mode: s.mode, theme: s.theme, hud: s.hud, run: s.run }),
+      partialize: (s) => ({ items: s.items, mode: s.mode, theme: s.theme, hud: s.hud, showPlanned: s.showPlanned, run: s.run }),
     },
   ),
 )

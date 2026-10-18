@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Mode } from '../lib/types'
 import { findCommand } from './commands'
+import { setState, useStore } from '../state/store'
 import { isMac } from './keys'
 
 const key = (init: Partial<KeyboardEvent>) =>
@@ -49,5 +50,32 @@ describe('mod+S', () => {
   it('export moved to mod+shift+S', () => {
     const modShiftS = key({ key: 'S', code: 'KeyS', shiftKey: true, ...mod })
     expect(findCommand(modShiftS, 'dump', false)?.id).toBe('data.export')
+  })
+})
+
+describe('the fill-in in Dump (→)', () => {
+  const press = (k: string, code = k) => findCommand(key({ key: k, code }), 'dump', false)
+  const initial = useStore.getState()
+
+  it('→ opens it, and while it is open the arrows, digits, ↵ and ⌫ belong to it', () => {
+    setState(initial, true)
+    expect(press('ArrowRight')?.id).toBe('dump.finish')
+    expect(press('Backspace')?.id).toBe('dump.delete')
+    expect(press('1', 'Digit1')).toBeUndefined()
+
+    setState({ items: [{ id: 'a', text: 'a', createdAt: 0, quadrant: null, slot: null, done: false, doneAt: null, parentId: null, minutes: null, session: 1 }] })
+    setState({ selectedId: 'a', dumpFinish: { id: 'a', step: 'quadrant', col: 0 } })
+    expect(press('ArrowRight')?.id).toBe('dump.finish.right')
+    expect(press('ArrowDown')?.id).toBe('dump.finish.down')
+    expect(press('Enter')?.id).toBe('dump.finish.enter')
+    expect(press('Backspace')?.id).toBe('dump.finish.backspace')
+    expect(press('3', 'Digit3')?.id).toBe('dump.finish.3')
+    setState(initial, true)
+  })
+
+  it('never reaches the other screens', () => {
+    for (const m of MODES.filter((m) => m !== 'dump')) {
+      expect(findCommand(key({ key: 'ArrowRight', code: 'ArrowRight' }), m, false)?.id ?? '').not.toMatch(/^dump\./)
+    }
   })
 })

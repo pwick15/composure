@@ -5,6 +5,8 @@ A keyboard-first place to empty your head when there's too much in it, sort what
 Four screens, one flow. `⌥←` / `⌥→` step between them; `⇧1`–`⇧4` jump straight there. The Archive sits off to the side (see the end of the list).
 
 1. **Dump** (`⇧1`). `Space` starts a new thought (typing anything else opens search, like every screen). `↵` saves the line and opens the next one; double-tap `⇧` (or `esc`) to finish. `⇧↑ ⇧↓` reorder. Paste a list and every line becomes a thought.
+
+   **Dump clears itself.** A thought with a priority, a day and a time has been dealt with, so Dump tucks it away (it's still in Sort, Plan and Today). A footer line, "show 3 sorted and planned", brings them back (also in search). Dropped thoughts count as dealt with: they need no day or time. To deal with what's left, select a thought and press `→`: it asks for the first thing missing (priority, then day, then time). `1`–`8` pick (the same numbers as Sort and Plan: priorities `1`–`4`, days `1`–`7` with `8` for later, times `1`–`6`), or use `←` `→` and `↵`. Each pick applies at once and moves on to what's still missing; `↑` `↓` skip to another missing field, `⌘S` takes any day in words, `←` from the first option, `⌫` or `esc` close, and `⌘Z` undoes a pick. When nothing is missing the thought leaves the list and the next one is selected. On a thought with subtasks it fills in every subtask that lacks it.
 2. **Sort** (`⇧2`). One thought at a time goes into an Eisenhower matrix. `Q W A S` files it and moves straight to the next one, no confirm step.
 3. **Plan** (`⇧3`). Slot what matters into the next seven days. `1`–`7` picks a day, `8` is "later", `0` unplans. Again, it applies at once.
 

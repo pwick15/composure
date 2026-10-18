@@ -10,10 +10,14 @@ import { autosize } from '../lib/dom'
 import { EXIT_FAST, keepFocus } from '../lib/motion'
 import { splitLines } from '../lib/text'
 import { sumMinutes } from '../lib/duration'
-import { live } from '../lib/selectors'
+import { finishOptions, GAP_LABEL } from '../lib/finish'
+import { GAPS, gapsOf, live, settled, visibleInDump } from '../lib/selectors'
 import { childrenOf, draftIndex, leaves, parentIds, progress, treeOrder } from '../lib/tree'
 import type { Item } from '../lib/types'
+import type { Gap } from '../lib/selectors'
 import {
+  finishClose,
+  finishPick,
   editorAddSub,
   editorBackspaceEmpty,
   editorEnter,
@@ -26,9 +30,10 @@ import {
   startDraft,
   startEdit,
   toggleDone,
+  togglePlanned,
   type EditTarget,
 } from '../state/actions'
-import { useStore } from '../state/store'
+import { useStore, type State } from '../state/store'
 
 /** Items committed from the editor appear in place without an entrance animation. */
 const bornInPlace = new Set<string>()
@@ -175,11 +180,57 @@ interface RowProps {
   minutes: number | null
   selected: boolean
   editing: EditTarget | null
+  /** Set while → is filling in this thought. */
+  finish: State['dumpFinish']
+  /** What this thought still lacks (a parent's subtasks, together). */
+  missing: Gap[]
   today: string
   ref?: Ref<HTMLLIElement>
 }
 
-function Row({ item, gutter, sub, kids, minutes, selected, editing, today, ref }: RowProps) {
+/** The options → offers for what's missing, under the row it's filling in. */
+function Finish({ finish, missing, today }: { finish: NonNullable<State['dumpFinish']>; missing: Gap[]; today: string }) {
+  const options = finishOptions(finish.step, today)
+  return (
+    <div className="today-add__attrs finish" onMouseDown={keepFocus} onClick={(e) => e.stopPropagation()}>
+      <div className="today-add__row" data-active>
+        <span className="today-add__label">{GAP_LABEL[finish.step]}</span>
+        {options.map((o, i) => (
+          <button
+            key={o.label}
+            type="button"
+            className="attr"
+            data-q={o.q}
+            data-cursor={i === finish.col || undefined}
+            title={o.hint}
+            onClick={() => finishPick(i + 1)}
+          >
+            <span className="attr__n">{i + 1}</span>
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <div className="finish__foot">
+        {missing.length > 1 && (
+          <span>
+            also needs {missing.filter((g) => g !== finish.step).map((g) => GAP_LABEL[g]).join(' and ')}{' '}
+            <Kbd k="down" size="xs" />
+          </span>
+        )}
+        {finish.step === 'slot' && (
+          <span>
+            any other day <Kbd k="mod+s" size="xs" />
+          </span>
+        )}
+        <button type="button" className="finish__close" onClick={finishClose}>
+          <Kbd k="left" size="xs" /> close
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function Row({ item, gutter, sub, kids, minutes, selected, editing, finish, missing, today, ref }: RowProps) {
   const quiet = bornInPlace.has(item.id)
   return (
     <motion.li
@@ -189,6 +240,7 @@ function Row({ item, gutter, sub, kids, minutes, selected, editing, today, ref }
       data-sub={sub || undefined}
       data-selected={selected || undefined}
       data-editing={editing ? '' : undefined}
+      data-finishing={finish || undefined}
       initial={quiet ? false : { opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -16, transition: EXIT_FAST }}
@@ -201,6 +253,11 @@ function Row({ item, gutter, sub, kids, minutes, selected, editing, today, ref }
         <span className="row__text">{item.text}</span>
       )}
       <span className="row__meta">
+        {selected && !editing && !finish && missing.length > 0 && (
+          <span className="row__fill">
+            <Kbd k="right" size="xs" /> add {GAP_LABEL[missing[0]]}
+          </span>
+        )}
         {kids ? (
           <>
             <TimeTag item={item} minutes={minutes} />
@@ -216,6 +273,7 @@ function Row({ item, gutter, sub, kids, minutes, selected, editing, today, ref }
           </>
         )}
       </span>
+      {finish && <Finish finish={finish} missing={missing} today={today} />}
     </motion.li>
   )
 }
@@ -273,13 +331,39 @@ function EmptyState() {
   )
 }
 
+/** Everything in the list is sorted and planned, so there is nothing left to see. */
+function AllClear({ count }: { count: number }) {
+  return (
+    <motion.div className="dump-clear" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+      <strong>All clear.</strong>
+      <span>
+        {count} {count === 1 ? 'thought is' : 'thoughts are'} sorted and planned.{' '}
+        <button className="cta cta--inline" onMouseDown={keepFocus} onClick={() => setMode('today')}>
+          Today <Kbd k="shift+4" size="xs" />
+        </button>{' '}
+        <button className="linkish" onMouseDown={keepFocus} onClick={togglePlanned}>
+          show them
+        </button>
+      </span>
+    </motion.div>
+  )
+}
+
 export function DumpMode() {
   const all = useStore((s) => s.items)
   const selectedId = useStore((s) => s.selectedId)
   const editing = useStore((s) => s.editing)
+  const finish = useStore((s) => s.dumpFinish)
+  const showPlanned = useStore((s) => s.showPlanned)
   const today = todayKey()
-  // Finished thoughts live in the Archive, not here.
-  const items = useMemo(() => live(all), [all])
+  // Finished thoughts live in the Archive, not here. Ones with a priority, a day and a time are
+  // dealt with, so they step aside too (the footer brings them back).
+  const open = useMemo(() => live(all), [all])
+  const items = useMemo(() => visibleInDump(all, showPlanned), [all, showPlanned])
+  const tucked = useMemo(() => {
+    const away = settled(all)
+    return leaves(open).filter((i) => away.has(i.id)).length
+  }, [all, open])
   const listRef = useRef<HTMLOListElement>(null)
 
   // An item committed from the draft replaces it in place; skip its entrance animation.
@@ -298,6 +382,7 @@ export function DumpMode() {
   const tree = treeOrder(items)
   let top = 0
   const nodes = tree.map((item, i) => {
+    const group = parents.has(item.id) ? childrenOf(open, item.id) : [item]
     const sub = parents.size > 0 && item.parentId !== null && parents.has(item.parentId)
     if (!sub) top++
     const lastSibling = sub && !(tree[i + 1]?.parentId === item.parentId)
@@ -308,9 +393,11 @@ export function DumpMode() {
         gutter={sub ? (lastSibling ? '└' : '├') : String(top).padStart(2, '0')}
         sub={sub}
         kids={parents.has(item.id) ? progress(all, item.id) : null}
-        minutes={parents.has(item.id) ? sumMinutes(childrenOf(items, item.id)) || null : item.minutes}
+        minutes={parents.has(item.id) ? sumMinutes(group) || null : item.minutes}
         selected={selectedId === item.id}
         editing={editing?.kind === 'item' && editing.id === item.id ? editing : null}
+        finish={finish?.id === item.id ? finish : null}
+        missing={GAPS.filter((g) => group.some((t) => gapsOf(t).includes(g)))}
         today={today}
       />
     )
@@ -329,7 +416,7 @@ export function DumpMode() {
         </header>
 
         {nodes.length === 0 ? (
-          <EmptyState />
+          open.length === 0 ? <EmptyState /> : <AllClear count={tucked} />
         ) : (
           <ol className="dump__list" ref={listRef}>
             <AnimatePresence initial={false} mode="popLayout">
@@ -338,11 +425,16 @@ export function DumpMode() {
           </ol>
         )}
 
-        {items.length > 0 && !editing && (
+        {open.length > 0 && !editing && (
           <motion.div className="dump__foot" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <button className="add-line" onMouseDown={keepFocus} onClick={() => startDraft()}>
               <span className="prompt-glyph">›</span> add another <Kbd k="space" size="xs" />
             </button>
+            {tucked > 0 && nodes.length > 0 && (
+              <button className="add-line" onMouseDown={keepFocus} onClick={togglePlanned}>
+                {showPlanned ? 'hide' : 'show'} {tucked} sorted and planned
+              </button>
+            )}
             {unsorted > 0 && (
               <button className="cta" onMouseDown={keepFocus} onClick={() => setMode('sort')}>
                 Sort {unsorted} {unsorted === 1 ? 'thought' : 'thoughts'}

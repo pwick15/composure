@@ -1,7 +1,7 @@
 import { columnFor, dayKey, isDateSlot, isOverdue, planColumns } from './dates'
 import { effMinutes } from './session'
 import { QUADRANTS, QUADRANT_RANK } from './quadrants'
-import { leaves } from './tree'
+import { childrenOf, leaves, parentIds } from './tree'
 import type { Item } from './types'
 
 // ---------------------------------------------------------------- order
@@ -75,6 +75,40 @@ export const archiveOrder = (all: Item[]): Item[] => archiveDays(all).flatMap((d
 export function resolveArchiveCursor(all: Item[], cursor: string | null): string | null {
   const list = archiveOrder(all)
   return (list.find((i) => i.id === cursor) ?? list[0])?.id ?? null
+}
+
+// ---------------------------------------------------------------- dump
+//
+// Dump is for getting things out of your head. Once a thought has a priority, a day and a time it
+// has been dealt with, so Dump tucks it away (it is still in Sort, Plan and Today). What it
+// still lacks is what → fills in.
+
+/** The three things a thought needs before it is dealt with, in the order they are asked for. */
+export type Gap = 'quadrant' | 'slot' | 'minutes'
+export const GAPS: Gap[] = ['quadrant', 'slot', 'minutes']
+
+/** What a thought still lacks. A dropped one is let go of, so it needs no day or time. */
+export const gapsOf = (i: Item): Gap[] => (i.quadrant === 'drop' ? [] : GAPS.filter((g) => i[g] === null))
+
+/**
+ * The thoughts Dump tucks away: actionable ones with nothing missing, and parents whose open
+ * subtasks are all tucked away.
+ */
+export function settled(all: Item[]): Set<string> {
+  const items = live(all)
+  const away = new Set(leaves(items).filter((i) => !gapsOf(i).length).map((i) => i.id))
+  for (const id of parentIds(items)) {
+    if (childrenOf(items, id).every((k) => away.has(k.id))) away.add(id)
+  }
+  return away
+}
+
+/** What Dump lists: every open thought, less the tucked-away ones unless `showAll`. */
+export function visibleInDump(all: Item[], showAll: boolean): Item[] {
+  const items = live(all)
+  if (showAll) return items
+  const away = settled(all)
+  return away.size ? items.filter((i) => !away.has(i.id)) : items
 }
 
 // ---------------------------------------------------------------- sort

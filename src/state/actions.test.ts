@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, todayKey } from '../lib/dates'
 import { makeBackup } from '../lib/export'
-import { todayList, todayProgress, todaySessions } from '../lib/selectors'
+import { settled, todayList, todayProgress, todaySessions, visibleInDump } from '../lib/selectors'
 import { parentOf, treeOrder } from '../lib/tree'
 import * as a from './actions'
 import { importFile } from './exporters'
@@ -1085,5 +1085,187 @@ describe('when', () => {
     a.todayAddOpen()
     a.whenOpen()
     expect(getState().when).toBeNull()
+  })
+})
+
+describe('dump: sorted and planned thoughts step aside', () => {
+  const task = (text: string) => getState().items.find((i) => i.text === text)!
+  const shown = () => treeOrder(visibleInDump(getState().items, getState().showPlanned)).map((i) => i.text)
+  const done = { quadrant: 'do' as const, slot: todayKey(), minutes: 15 }
+  const fill = (text: string, change: object) =>
+    setState({ items: getState().items.map((i) => (i.text === text ? { ...i, ...change } : i)) })
+
+  it('hides a thought once it has a priority, a day and a time, and shows it again on request', () => {
+    dump('a', 'b', 'c')
+    fill('b', done)
+    expect(shown()).toEqual(['a', 'c'])
+    a.togglePlanned()
+    expect(shown()).toEqual(['a', 'b', 'c'])
+    a.togglePlanned()
+    expect(shown()).toEqual(['a', 'c'])
+  })
+
+  it('keeps a thought that still lacks any one of the three', () => {
+    dump('no priority', 'no day', 'no time')
+    fill('no priority', { slot: todayKey(), minutes: 15 })
+    fill('no day', { quadrant: 'do', minutes: 15 })
+    fill('no time', { quadrant: 'do', slot: todayKey() })
+    expect(settled(getState().items).size).toBe(0)
+  })
+
+  it('treats a dropped thought as dealt with: it needs no day or time', () => {
+    dump('a', 'b')
+    fill('a', { quadrant: 'drop' })
+    expect(shown()).toEqual(['b'])
+  })
+
+  it('hides a parent only when all its subtasks are dealt with', () => {
+    dump('trip', 'flights', 'hotel')
+    setState({ items: getState().items.map((i) => (i.text === 'trip' ? i : { ...i, parentId: task('trip').id })) })
+    fill('flights', done)
+    expect(shown()).toEqual(['trip', 'hotel'])
+    fill('hotel', done)
+    expect(shown()).toEqual([])
+  })
+
+  it('selection and moving skip what is hidden', () => {
+    dump('a', 'b', 'c')
+    fill('b', done)
+    setState({ selectedId: task('a').id })
+    a.dumpSelect(1)
+    expect(getState().selectedId).toBe(task('c').id)
+    a.dumpMove(-1) // swaps with a, not with the hidden b
+    expect(texts()).toEqual(['c', 'b', 'a'])
+    expect(shown()).toEqual(['c', 'a'])
+  })
+
+  it('search reveals a hidden thought', () => {
+    dump('a')
+    fill('a', done)
+    a.setMode('sort')
+    a.setMode('dump')
+    expect(shown()).toEqual([])
+    a.jumpTo(task('a').id)
+    expect(getState().mode).toBe('dump')
+    expect(shown()).toEqual(['a'])
+    expect(getState().selectedId).toBe(task('a').id)
+  })
+})
+
+describe('dump: → fills in what is missing', () => {
+  const task = (text: string) => getState().items.find((i) => i.text === text)!
+  const select = (text: string) => setState({ selectedId: task(text).id })
+  const dayKeys = () => [todayKey(), addDays(todayKey(), 1)]
+
+  it('asks for priority, then day, then time, and the thought leaves Dump when done', () => {
+    dump('a', 'b')
+    select('a')
+    a.finishOpen()
+    expect(getState().dumpFinish).toMatchObject({ id: task('a').id, step: 'quadrant' })
+    a.finishPick(2) // Schedule
+    expect(task('a').quadrant).toBe('schedule')
+    expect(getState().dumpFinish?.step).toBe('slot')
+    a.finishPick(2) // tomorrow
+    expect(task('a').slot).toBe(dayKeys()[1])
+    expect(getState().dumpFinish?.step).toBe('minutes')
+    a.finishPick(3) // 30m
+    expect(task('a').minutes).toBe(30)
+    expect(getState().dumpFinish).toBeNull()
+    expect(getState().selectedId).toBe(task('b').id) // lands on the next thought
+    expect(visibleInDump(getState().items, false).map((i) => i.text)).toEqual(['b'])
+  })
+
+  it('only asks for what is missing', () => {
+    dump('a')
+    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do', slot: todayKey() })) })
+    select('a')
+    a.finishOpen()
+    expect(getState().dumpFinish?.step).toBe('minutes')
+  })
+
+  it('has nothing to ask on a thought that is complete', () => {
+    dump('a')
+    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do', slot: todayKey(), minutes: 5 })) })
+    select('a')
+    a.finishOpen()
+    expect(getState().dumpFinish).toBeNull()
+    expect(getState().toasts.at(-1)?.text).toContain('Nothing missing')
+  })
+
+  it('dropping it is enough: no day or time is asked', () => {
+    dump('a')
+    select('a')
+    a.finishOpen()
+    a.finishPick(4)
+    expect(task('a').quadrant).toBe('drop')
+    expect(getState().dumpFinish).toBeNull()
+  })
+
+  it('↑/↓ skip to another missing field, and ← from the first option closes', () => {
+    dump('a')
+    select('a')
+    a.finishOpen()
+    a.finishStep(1)
+    expect(getState().dumpFinish?.step).toBe('slot')
+    a.finishPick(1)
+    expect(task('a').slot).toBe(todayKey())
+    expect(getState().dumpFinish?.step).toBe('minutes')
+    a.finishStep(-1) // the priority is still missing
+    expect(getState().dumpFinish?.step).toBe('quadrant')
+    a.finishArrow(1)
+    expect(getState().dumpFinish?.col).toBe(1)
+    a.finishEnter() // Schedule, which leaves only the time
+    expect(task('a').quadrant).toBe('schedule')
+    expect(getState().dumpFinish).toMatchObject({ step: 'minutes', col: 0 })
+    a.finishArrow(1)
+    a.finishArrow(-1)
+    expect(getState().dumpFinish?.col).toBe(0)
+    a.finishArrow(-1)
+    expect(getState().dumpFinish).toBeNull()
+  })
+
+  it('one ⌘Z takes back a pick and brings a hidden thought back, selected', () => {
+    dump('a')
+    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do', slot: todayKey() })) })
+    select('a')
+    a.finishOpen()
+    a.finishPick(3)
+    expect(visibleInDump(getState().items, false)).toEqual([])
+    a.undo()
+    expect(task('a').minutes).toBeNull()
+    expect(getState().selectedId).toBe(task('a').id)
+    expect(visibleInDump(getState().items, false)).toHaveLength(1)
+  })
+
+  it('on a parent, fills in every subtask that lacks it, as one undo step', () => {
+    dump('trip', 'flights', 'hotel')
+    setState({ items: getState().items.map((i) => (i.text === 'trip' ? i : { ...i, parentId: task('trip').id })) })
+    setState({ items: getState().items.map((i) => (i.text === 'hotel' ? { ...i, quadrant: 'schedule' as const } : i)) })
+    select('trip')
+    a.finishOpen()
+    a.finishPick(1) // Do: only flights lacked a priority
+    expect(task('flights').quadrant).toBe('do')
+    expect(task('hotel').quadrant).toBe('schedule')
+    a.undo()
+    expect(task('flights').quadrant).toBeNull()
+    expect(task('hotel').quadrant).toBe('schedule')
+  })
+
+  it('⌘S giving the day while filling in moves on to what is still missing', () => {
+    dump('a')
+    select('a')
+    a.finishOpen()
+    a.finishStep(1)
+    a.whenOpen()
+    a.whenApply(addDays(todayKey(), 4))
+    expect(getState().dumpFinish?.step).toBe('quadrant')
+  })
+
+  it('opening something else closes it', () => {
+    dump('a', 'b')
+    select('a')
+    a.finishOpen()
+    a.startEdit(task('b').id)
+    expect(getState().dumpFinish).toBeNull()
   })
 })
