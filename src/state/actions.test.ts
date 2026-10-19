@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { addDays, todayKey } from '../lib/dates'
-import { makeBackup } from '../lib/export'
-import { settled, todayList, todayProgress, todaySessions, visibleInDump } from '../lib/selectors'
+import { makeBackup, parseBackup } from '../lib/export'
+import { itemsInColumn, settled, sortGroups, todayList, todayProgress, todaySessions, visibleInDump } from '../lib/selectors'
 import { parentOf, treeOrder } from '../lib/tree'
 import * as a from './actions'
 import { importFile } from './exporters'
@@ -1355,5 +1355,107 @@ describe('start the sorting over', () => {
     a.unorganise()
     expect(getState().toasts.at(-1)?.text).toContain('Nothing is sorted')
     expect(getState().past.length).toBe(1) // only the dump itself
+  })
+})
+
+describe('order by hand (⌥↑ ⌥↓)', () => {
+  const task = (text: string) => getState().items.find((i) => i.text === text)!
+  const withMinutes = (m: Record<string, number>, extra: object = {}) =>
+    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do' as const, minutes: m[i.text] ?? null, ...extra })) })
+  const doList = () => sortGroupsDo().map((i) => i.text)
+  const sortGroupsDo = () => sortGroups(getState().items)[1]
+
+  it('Sort: moves a thought past the quickest-first order, and the rest keep the order they showed', () => {
+    dump('long', 'short', 'mid')
+    withMinutes({ long: 60, short: 5, mid: 30 })
+    expect(doList()).toEqual(['short', 'mid', 'long']) // automatic
+    a.setMode('sort')
+    a.deckFocus('sort', task('short').id)
+    a.orderMove(1)
+    expect(doList()).toEqual(['mid', 'short', 'long'])
+    a.orderMove(1)
+    a.orderMove(1) // already last: stays
+    expect(doList()).toEqual(['mid', 'long', 'short'])
+    expect(getState().decks.sort.cursor).toBe(task('short').id) // still the selected one
+    a.undo()
+    expect(doList()).toEqual(['mid', 'short', 'long'])
+  })
+
+  it('a thought added later joins after the ones placed by hand', () => {
+    dump('long', 'mid')
+    withMinutes({ long: 60, mid: 30 })
+    a.setMode('sort')
+    a.deckFocus('sort', task('mid').id)
+    a.orderMove(1)
+    expect(doList()).toEqual(['long', 'mid'])
+    dump('tiny')
+    setState({ items: getState().items.map((i) => (i.text === 'tiny' ? { ...i, quadrant: 'do' as const, minutes: 1 } : i)) })
+    expect(doList()).toEqual(['long', 'mid', 'tiny'])
+  })
+
+  it('files into another quadrant forget the place from the old one', () => {
+    dump('a', 'b')
+    withMinutes({ a: 10, b: 20 })
+    a.setMode('sort')
+    a.deckFocus('sort', task('a').id)
+    a.orderMove(1)
+    expect(task('a').manual).toEqual({ sort: 2 })
+    a.deckFile('sort', 'schedule')
+    expect(task('a').manual).toBeUndefined()
+  })
+
+  it('Plan: reorders within a day, and Today within a session, each on its own', () => {
+    dump('long', 'short')
+    withMinutes({ long: 60, short: 5 }, { slot: todayKey() })
+    a.setMode('plan')
+    a.deckFocus('plan', task('short').id)
+    a.orderMove(1)
+    expect(itemsInColumn(getState().items, todayKey(), todayKey()).map((i) => i.text)).toEqual(['long', 'short'])
+    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['short', 'long']) // Today is its own list
+    a.setMode('today')
+    a.todayFocus(task('long').id)
+    a.orderMove(-1)
+    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['long', 'short'])
+  })
+
+  it('Today: moves within its session and never into another', () => {
+    dump('a', 'b', 'c')
+    withMinutes({ a: 5, b: 10, c: 15 }, { slot: todayKey() })
+    setState({ items: getState().items.map((i) => (i.text === 'c' ? { ...i, session: 2 } : i)) })
+    a.setMode('today')
+    a.todayFocus(task('b').id)
+    a.orderMove(1) // b is last in session 1; c is in session 2
+    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['a', 'b', 'c'])
+    a.orderMove(-1)
+    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['b', 'a', 'c'])
+    expect(getState().todayCursor).toBe(task('b').id)
+  })
+
+  it('says why the unsorted queue does not move, and can go back to automatic', () => {
+    dump('a')
+    a.setMode('sort')
+    a.orderMove(1)
+    expect(getState().toasts.at(-1)?.text).toContain('Dump order')
+    a.orderAuto()
+    expect(getState().toasts.at(-1)?.text).toContain('Already')
+    dump('x', 'y')
+    withMinutes({ a: 1, x: 10, y: 20 })
+    a.deckFocus('sort', task('x').id)
+    a.orderMove(1)
+    expect(task('x').manual).toBeDefined()
+    a.orderAuto()
+    expect(getState().items.some((i) => i.manual)).toBe(false)
+    expect(doList()).toEqual(['a', 'x', 'y'])
+  })
+
+  it('starting the sorting over clears the places too, and a backup keeps them', () => {
+    dump('a', 'b')
+    withMinutes({ a: 1, b: 2 })
+    a.setMode('sort')
+    a.deckFocus('sort', task('a').id)
+    a.orderMove(1)
+    expect(parseBackup(makeBackup(getState().items)).find((i) => i.text === 'a')?.manual).toEqual({ sort: 2 })
+    a.unorganise()
+    expect(getState().items.some((i) => i.manual)).toBe(false)
   })
 })

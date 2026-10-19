@@ -492,6 +492,16 @@ export const COMMANDS: Command[] = [
     ]
   }),
 
+  // ------------------------------------------------------------ ⌥ arrows: put it where you want in the list
+  ...(['sort', 'plan', 'today'] as const).flatMap((m): Command[] => {
+    const group = m === 'sort' ? 'Sort' : m === 'plan' ? 'Plan' : 'Today'
+    const keywords = 'order reorder rearrange priority position override manual up down'
+    return [
+      { id: `${m}.orderUp`, title: 'Move up the list (over the automatic order)', hud: 'Move up', group, scope: m, keys: ['alt+up'], repeat: true, keywords, run: () => a.orderMove(-1) },
+      { id: `${m}.orderDown`, title: 'Move down the list (over the automatic order)', hud: 'Move down', group, scope: m, keys: ['alt+down'], repeat: true, keywords, run: () => a.orderMove(1) },
+    ]
+  }),
+
   // ------------------------------------------------------------ shift+arrows: move the thought itself
   ...(
     [
@@ -734,6 +744,13 @@ export const COMMANDS: Command[] = [
     group: 'Data',
     keywords: 'undo reset redo sort plan organise organize unsort unplan forgot again clear priorities days times',
     run: a.unorganise,
+  },
+  {
+    id: 'data.autoOrder',
+    title: 'Back to the automatic order (quickest first) everywhere',
+    group: 'Data',
+    keywords: 'reset order manual rearranged undo sort by time shortest first',
+    run: a.orderAuto,
   },
   { id: 'data.clearDone', title: 'Clear completed items', group: 'Data', keywords: 'remove done', run: a.clearDone },
   {

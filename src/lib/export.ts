@@ -154,6 +154,16 @@ export function makeBackup(items: Item[]): string {
 
 const QUADRANT_IDS = new Set<string>(QUADRANTS.map((q) => q.id))
 
+/** The places you gave a thought by hand, keeping only valid ones (as `{ manual }`, or nothing). */
+function cleanManual(raw: unknown): Pick<Item, 'manual'> {
+  const manual: NonNullable<Item['manual']> = {}
+  for (const v of ['sort', 'plan', 'today'] as const) {
+    const n = (raw as Item['manual'] | undefined)?.[v]
+    if (typeof n === 'number' && Number.isInteger(n) && n >= 1) manual[v] = n
+  }
+  return Object.keys(manual).length ? { manual } : {}
+}
+
 export function parseBackup(json: string): Item[] {
   const data = JSON.parse(json) as Partial<Backup>
   if (data?.app !== 'composure' || !Array.isArray(data.items)) throw new Error('Not a Composure backup')
@@ -172,6 +182,7 @@ export function parseBackup(json: string): Item[] {
       minutes: cleanMinutes(r.minutes),
       session: typeof r.session === 'number' && Number.isInteger(r.session) && r.session >= 1 ? r.session : 1,
       parentId: typeof r.parentId === 'string' && r.parentId !== r.id && ids.has(r.parentId) ? r.parentId : null,
+      ...cleanManual(r.manual),
     }
   })
   // Subtasks are one level deep: a subtask of a subtask becomes a plain thought.

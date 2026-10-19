@@ -2,12 +2,22 @@ import { columnFor, dayKey, isDateSlot, isOverdue, planColumns } from './dates'
 import { effMinutes } from './session'
 import { QUADRANTS, QUADRANT_RANK } from './quadrants'
 import { childrenOf, leaves, parentIds } from './tree'
-import type { Item } from './types'
+import type { Item, View } from './types'
 
 // ---------------------------------------------------------------- order
 //
 // Within a quadrant, quick things come first: finishing them early is momentum, and it clears
 // the list fastest. Things with no estimate go last, since nobody knows how long they take.
+
+/**
+ * A thought you've placed by hand beats the automatic order: placed ones come first, in the order
+ * you set, and anything new in the list follows, sorted automatically.
+ */
+const byHand = (view: View) => (a: Item, b: Item) => {
+  const x = a.manual?.[view] ?? Infinity
+  const y = b.manual?.[view] ?? Infinity
+  return x === y ? 0 : x < y ? -1 : 1
+}
 
 const rankOf = (i: Item) => (i.quadrant ? QUADRANT_RANK[i.quadrant] : 3)
 const length = (i: Item) => i.minutes ?? Infinity
@@ -118,7 +128,9 @@ export function sortGroups(all: Item[]): Item[][] {
   const items = leaves(live(all))
   return [
     items.filter((i) => !i.quadrant),
-    ...QUADRANTS.map((q) => items.filter((i) => i.quadrant === q.id).sort(shorterFirst)),
+    ...QUADRANTS.map((q) =>
+      items.filter((i) => i.quadrant === q.id).sort((a, b) => byHand('sort')(a, b) || shorterFirst(a, b)),
+    ),
   ]
 }
 
@@ -142,6 +154,8 @@ export function planQueue(all: Item[], today: string): Item[] {
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => isPlannable(item) && columnFor(item.slot, today) === null)
     .sort((a, b) => {
+      const placed = byHand('plan')(a.item, b.item)
+      if (placed) return placed
       const overdue = Number(isOverdue(b.item.slot, today)) - Number(isOverdue(a.item.slot, today))
       if (overdue) return overdue
       return tackleOrder(a.item, b.item) || a.index - b.index
@@ -175,7 +189,7 @@ export function nextInQueue(queue: Item[], currentId: string): string | null {
 export function itemsInColumn(all: Item[], col: string, today: string): Item[] {
   return leaves(live(all))
     .filter((i) => isPlannable(i) && columnFor(i.slot, today) === col)
-    .sort(tackleOrder)
+    .sort((a, b) => byHand('plan')(a, b) || tackleOrder(a, b))
 }
 
 // ---------------------------------------------------------------- today
@@ -188,7 +202,18 @@ export function itemsInColumn(all: Item[], col: string, today: string): Item[] {
 export function todayList(all: Item[], today: string): Item[] {
   const items = leaves(live(all)).filter((i) => isPlannable(i) && (i.slot === today || isOverdue(i.slot, today)))
   const late = (i: Item) => Number(isOverdue(i.slot, today))
-  return items.sort((a, b) => a.session - b.session || late(b) - late(a) || tackleOrder(a, b))
+  return items.sort((a, b) => a.session - b.session || byHand('today')(a, b) || late(b) - late(a) || tackleOrder(a, b))
+}
+
+/**
+ * The list a thought sits in on a screen, in the order shown. Null where that screen keeps no
+ * automatic order for it (Sort's unsorted queue is in Dump order).
+ */
+export function listOf(all: Item[], view: View, id: string, today: string): Item[] | null {
+  const has = (list: Item[]) => list.some((i) => i.id === id)
+  if (view === 'sort') return sortGroups(all).slice(1).find(has) ?? null
+  if (view === 'plan') return planGroups(all, today).find(has) ?? null
+  return todaySessions(all, today).find((g) => has(g.items))?.items ?? null
 }
 
 /** Today's plan split into its work sessions, in order. Empty sessions don't exist. */

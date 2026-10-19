@@ -19,6 +19,7 @@ import {
   resolveTodayCursor,
   GAPS,
   gapsOf,
+  listOf,
   settled,
   sortGroups,
   todayList,
@@ -27,7 +28,7 @@ import {
   type Gap,
 } from '../lib/selectors'
 import { childrenOf, draftIndex, isDone, lastInBlock, leaves, parentKey, treeOrder } from '../lib/tree'
-import type { Item, Mode, Quadrant, Slot } from '../lib/types'
+import type { Item, Mode, Quadrant, Slot, View } from '../lib/types'
 import { type Deck, type Editing, freshDeck, getState as get, setState as set, type State, type TrayExit } from './store'
 
 export type EditTarget = Exclude<Editing, null>
@@ -74,7 +75,7 @@ function changedId(a: Item[], b: Item[]): string | null {
   const byId = new Map(b.map((i) => [i.id, i]))
   for (const i of a) {
     const j = byId.get(i.id)
-    if (!j || j.quadrant !== i.quadrant || j.slot !== i.slot || j.text !== i.text || j.done !== i.done || j.parentId !== i.parentId || j.minutes !== i.minutes || j.session !== i.session) return i.id
+    if (!j || j.quadrant !== i.quadrant || j.slot !== i.slot || j.text !== i.text || j.done !== i.done || j.parentId !== i.parentId || j.minutes !== i.minutes || j.session !== i.session || j.manual !== i.manual) return i.id
   }
   return b.find((j) => !a.some((i) => i.id === j.id))?.id ?? null
 }
@@ -151,6 +152,12 @@ function relocate(items: Item[], ids: string[], after: string): Item[] {
   return [...rest.slice(0, at + 1), ...block, ...rest.slice(at + 1)]
 }
 
+/** `manual` with some screens' places dropped, or undefined once none is left. */
+function withoutPlaces(manual: Item['manual'], views: View[]): Item['manual'] {
+  const left = Object.entries(manual ?? {}).filter(([v]) => !views.includes(v as View))
+  return left.length ? Object.fromEntries(left) : undefined
+}
+
 function patch(id: string, change: Partial<Item>) {
   const item = findItem(id)
   if (!item) return
@@ -160,6 +167,15 @@ function patch(id: string, change: Partial<Item>) {
   if (change.done !== undefined && change.done !== item.done) change = { ...change, doneAt: change.done ? Date.now() : null }
   const same = (Object.keys(change) as (keyof Item)[]).every((k) => item[k] === change[k])
   if (same) return
+  // A thought that lands in another list loses the place you gave it in the old one.
+  const moved = (['sort', 'plan', 'today'] as const).filter(
+    (v) =>
+      item.manual?.[v] !== undefined &&
+      (v === 'sort' ? change.quadrant !== undefined && change.quadrant !== item.quadrant
+      : v === 'plan' ? change.slot !== undefined && change.slot !== item.slot
+      : (change.slot !== undefined && change.slot !== item.slot) || (change.session !== undefined && change.session !== item.session)),
+  )
+  if (moved.length) change = { ...change, manual: withoutPlaces(item.manual, moved) }
   commit(get().items.map((i) => (i.id === id ? { ...i, ...change } : i)))
 }
 
@@ -314,7 +330,7 @@ export function unorganise() {
   const organised = (i: Item) => i.quadrant !== null || i.slot !== null || i.minutes !== null || i.session !== 1
   const n = leaves(items).filter((i) => open.has(i.id) && organised(i)).length
   if (!n) return toast('Nothing is sorted or planned yet')
-  commit(items.map((i) => (open.has(i.id) ? { ...i, quadrant: null, slot: null, minutes: null, session: 1 } : i)))
+  commit(items.map((i) => (open.has(i.id) ? { ...i, quadrant: null, slot: null, minutes: null, session: 1, manual: undefined } : i)))
   resetCursors()
   sessionSync() // a running session has nothing left to run
   toast(`Cleared priority, day and time on ${plural(n, 'thought')}`, 'mod+z')
@@ -971,6 +987,36 @@ export function deleteCurrent() {
   if (!cur) return nothingHere(mode)
   leaveDeck(mode, cur, () => removeItem(cur.id))
   toast(`Deleted "${truncate(cur.text)}"`, 'mod+z')
+}
+
+// ---------------------------------------------------------------- order by hand
+//
+// Sort, Plan and Today list each group quickest first. ⌥↑ / ⌥↓ moves the selected thought up or
+// down its list instead. That places every thought in the list by hand (the rest keep the order
+// they were showing), and anything added later joins the end, sorted automatically.
+
+export function orderMove(dir: -1 | 1) {
+  const { mode, items } = get()
+  if (mode !== 'sort' && mode !== 'plan' && mode !== 'today') return
+  const cur = mode === 'today' ? todayCurrent() : trayCurrent()
+  if (!cur) return toast('Nothing selected')
+  const list = listOf(items, mode, cur.id, todayKey())
+  if (!list) return toast('Unsorted thoughts are in Dump order. ⇧↑ ⇧↓ in Dump moves them')
+  const i = list.findIndex((it) => it.id === cur.id)
+  const j = i + dir
+  if (j < 0 || j >= list.length) return
+  const next = [...list]
+  ;[next[i], next[j]] = [next[j], next[i]]
+  const place = new Map(next.map((it, n) => [it.id, n + 1]))
+  commit(items.map((it) => (place.has(it.id) ? { ...it, manual: { ...it.manual, [mode]: place.get(it.id) } } : it)))
+}
+
+/** Back to the automatic order (quickest first) everywhere. */
+export function orderAuto() {
+  const { items } = get()
+  if (!items.some((i) => i.manual)) return toast('Already in the automatic order')
+  commit(items.map((i) => (i.manual ? { ...i, manual: undefined } : i)))
+  toast('Back to quickest first, everywhere', 'mod+z')
 }
 
 // ---------------------------------------------------------------- time estimates

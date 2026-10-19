@@ -20,6 +20,14 @@ export interface Item {
   minutes: number | null
   /** Which work session of the day it belongs to (1 = the first). Only matters while it's in Today. */
   session: number
+  /**
+   * Where you put it by hand in a list, 1 being the top. Overrides the automatic quickest-first
+   * order on that screen: ranked thoughts come first in the order you set, the rest follow.
+   */
+  manual?: Partial<Record<View, number>>
 }
+
+/** The screens that list thoughts in an automatic order (quadrant and quickest first). */
+export type View = 'sort' | 'plan' | 'today'
 
 export type Theme = 'system' | 'dark' | 'light'

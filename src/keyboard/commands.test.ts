@@ -49,6 +49,14 @@ describe('mod+E', () => {
   })
 })
 
+describe('alt+arrows', () => {
+  it('reorder the list on Sort, Plan and Today, and Dump keeps its own move', () => {
+    const up = key({ key: 'ArrowUp', code: 'ArrowUp', altKey: true })
+    for (const m of ['sort', 'plan', 'today'] as const) expect(findCommand(up, m, false)?.id).toBe(`${m}.orderUp`)
+    expect(findCommand(up, 'dump', false)?.id).toBe('dump.moveUp')
+  })
+})
+
 describe('mod+S', () => {
   it('sets the day on every screen and while typing, so the browser never offers to save the page', () => {
     const modS = key({ key: 's', code: 'KeyS', ...mod })
