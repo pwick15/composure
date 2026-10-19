@@ -1325,3 +1325,35 @@ describe('edit text on every screen (⌘E)', () => {
     expect(getState().toasts.at(-1)?.text).toContain('Nothing selected')
   })
 })
+
+describe('start the sorting over', () => {
+  const task = (text: string) => getState().items.find((i) => i.text === text)!
+
+  it('clears priority, day, time and session on everything open, and ⌘Z puts it all back', () => {
+    dump('a', 'b', 'old')
+    setState({
+      items: getState().items.map((i) => ({ ...i, quadrant: 'do' as const, slot: todayKey(), minutes: 30, session: 2 })),
+    })
+    a.toggleDone(task('old').id)
+    a.unorganise()
+    for (const t of ['a', 'b']) expect(task(t)).toMatchObject({ quadrant: null, slot: null, minutes: null, session: 1, text: t })
+    expect(task('old')).toMatchObject({ done: true, quadrant: 'do', minutes: 30 }) // the archive is left alone
+    expect(getState().toasts.at(-1)?.text).toContain('2 thoughts')
+    a.undo()
+    expect(task('a')).toMatchObject({ quadrant: 'do', slot: todayKey(), minutes: 30, session: 2 })
+  })
+
+  it('subtasks lose theirs too, but stay under their parent', () => {
+    dump('trip', 'flights')
+    setState({ items: getState().items.map((i) => (i.text === 'flights' ? { ...i, parentId: task('trip').id, quadrant: 'do' as const } : i)) })
+    a.unorganise()
+    expect(task('flights')).toMatchObject({ quadrant: null, parentId: task('trip').id })
+  })
+
+  it('says so when there is nothing to clear, and changes nothing', () => {
+    dump('a')
+    a.unorganise()
+    expect(getState().toasts.at(-1)?.text).toContain('Nothing is sorted')
+    expect(getState().past.length).toBe(1) // only the dump itself
+  })
+})

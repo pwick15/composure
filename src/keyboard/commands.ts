@@ -728,6 +728,13 @@ export const COMMANDS: Command[] = [
     keywords: 'restore load open merge markdown md txt json backup',
     run: x.pickImport,
   },
+  {
+    id: 'data.unorganise',
+    title: 'Start the sorting over: clear every priority, day and time',
+    group: 'Data',
+    keywords: 'undo reset redo sort plan organise organize unsort unplan forgot again clear priorities days times',
+    run: a.unorganise,
+  },
   { id: 'data.clearDone', title: 'Clear completed items', group: 'Data', keywords: 'remove done', run: a.clearDone },
   {
     id: 'data.clearAll',

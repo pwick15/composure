@@ -26,7 +26,7 @@ import {
   visibleInDump,
   type Gap,
 } from '../lib/selectors'
-import { childrenOf, draftIndex, isDone, lastInBlock, parentKey, treeOrder } from '../lib/tree'
+import { childrenOf, draftIndex, isDone, lastInBlock, leaves, parentKey, treeOrder } from '../lib/tree'
 import type { Item, Mode, Quadrant, Slot } from '../lib/types'
 import { type Deck, type Editing, freshDeck, getState as get, setState as set, type State, type TrayExit } from './store'
 
@@ -302,6 +302,22 @@ export function clearDone() {
   const gone = new Set(finished.map((i) => i.id))
   commit(items.filter((i) => !gone.has(i.id)))
   toast(`Cleared ${n} completed`, 'mod+z')
+}
+
+/**
+ * Takes the sorting and planning back off everything still open: no priority, day, time or session.
+ * The thoughts stay (and so do finished ones, in the Archive), so Sort and Plan can be done again.
+ */
+export function unorganise() {
+  const { items } = get()
+  const open = new Set(live(items).map((i) => i.id))
+  const organised = (i: Item) => i.quadrant !== null || i.slot !== null || i.minutes !== null || i.session !== 1
+  const n = leaves(items).filter((i) => open.has(i.id) && organised(i)).length
+  if (!n) return toast('Nothing is sorted or planned yet')
+  commit(items.map((i) => (open.has(i.id) ? { ...i, quadrant: null, slot: null, minutes: null, session: 1 } : i)))
+  resetCursors()
+  sessionSync() // a running session has nothing left to run
+  toast(`Cleared priority, day and time on ${plural(n, 'thought')}`, 'mod+z')
 }
 
 export function clearAll() {
