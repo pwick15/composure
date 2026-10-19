@@ -60,6 +60,7 @@ function SessionSummary({ items, today }: { items: Item[]; today: string }) {
     ms = remainingMs(run, items, sessionOpen, now) + elsewhere.reduce((n, i) => n + effMinutes(i), 0) * 60_000
   }
   const doneBy = clockTime(now + ms)
+  const sessions = todaySessions(items, today).length
   // A task with no estimate is a guess, so say so rather than pretend to know.
   const guess = left.unestimated > 0
   const approx = guess ? '~' : ''
@@ -84,6 +85,7 @@ function SessionSummary({ items, today }: { items: Item[]; today: string }) {
         </b>
         {run?.phase === 'over' && ' if you carry on'}
       </span>
+      {sessions > 1 && <span>across {sessions} sessions</span>}
       {!run && (
         <button className="linkish" onMouseDown={keepFocus} onClick={sessionStart}>
           start now

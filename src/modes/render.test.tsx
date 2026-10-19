@@ -174,6 +174,18 @@ describe('screens', () => {
     expect(render(<PlanMode />)).toContain('data-picked="true"')
   })
 
+  it('the focus view still shows when everything will be done, across every session', () => {
+    seed()
+    load(getState().items.map((i) => (i.id === 'r' ? { ...i, session: 2 } : i)))
+    const run = { session: 1, queue: ['f'], index: 0, startedAt: Date.now(), phase: 'running' as const }
+    Object.assign(snapshot, { run })
+    setState({ run })
+    const html = render(<TodayMode />)
+    expect(html).toContain('data-focusing="true"')
+    expect(html).toContain('done by')
+    expect(html).toContain('across 2 sessions')
+  })
+
   it('Today is not in focus view before a session starts or after time is up', () => {
     seed()
     expect(render(<TodayMode />)).not.toContain('data-focusing')

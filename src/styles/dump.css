@@ -674,9 +674,19 @@
 /* While a session runs, the task on the clock takes the screen. Everything else is still there
    (hover or type to bring it back) but too faint to pull your eye away. */
 .dump[data-focusing] .dump__head,
-.dump[data-focusing] .today-progress,
-.dump[data-focusing] .time-left {
+.dump[data-focusing] .today-progress {
   display: none;
+}
+
+/* The one thing that stays in view besides the task: when everything, across all sessions, will be done. */
+.dump[data-focusing] .time-left {
+  order: 1;
+  justify-content: center;
+  margin-top: 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--text-2);
 }
 
 .dump[data-focusing] .dump__inner {
@@ -754,6 +764,7 @@
 }
 
 .dump[data-focusing] .today-list {
+  order: 2;
   margin-top: auto;
   opacity: 0.1;
   filter: blur(1.5px);
