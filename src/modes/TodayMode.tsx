@@ -426,8 +426,11 @@ export function TodayMode() {
     document.querySelector('.today-row[data-selected]')?.scrollIntoView({ block: 'nearest' })
   }, [currentId])
 
+  // While a session is running the current task fills the screen and everything else fades back.
+  const focusing = run?.phase === 'running'
+
   return (
-    <div className="dump">
+    <div className="dump" data-focusing={focusing || undefined}>
       <div className="dump__inner">
         <header className="dump__head">
           <div className="eyebrow">// today · {longDate(today)}</div>

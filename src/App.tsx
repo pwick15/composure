@@ -23,6 +23,7 @@ const ORDER = ['dump', 'sort', 'plan', 'today', 'archive']
 export default function App() {
   const mode = useStore((s) => s.mode)
   const theme = useStore((s) => s.theme)
+  const focusing = useStore((s) => s.mode === 'today' && s.run?.phase === 'running')
   useGlobalKeys()
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user" transition={SPRING}>
-      <div className="app">
+      <div className="app" data-focusing={focusing || undefined}>
         <TopBar />
         <main className="stage">
           <motion.div

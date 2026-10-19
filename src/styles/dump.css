@@ -654,3 +654,113 @@
 .archive-back {
   margin-bottom: 18px;
 }
+
+/* ------------------------------------------------------------------ focus: one task, nothing else */
+
+/* While a session runs, the task on the clock takes the screen. Everything else is still there
+   (hover or type to bring it back) but too faint to pull your eye away. */
+.dump[data-focusing] .dump__head,
+.dump[data-focusing] .today-progress,
+.dump[data-focusing] .time-left {
+  display: none;
+}
+
+.dump[data-focusing] .dump__inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding-top: 9vh;
+}
+
+.session[data-phase='running'] {
+  margin: 0 auto;
+  width: 100%;
+  padding: 8px 0 36px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  text-align: center;
+}
+
+.session[data-phase='running'] .session__head {
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.session[data-phase='running'] .session__clock {
+  order: 2;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.session[data-phase='running'] .session__clock::after {
+  content: ' left in the session';
+  font-family: var(--font-sans);
+}
+
+.session[data-phase='running'] .session__now {
+  flex-direction: column;
+  gap: 22px;
+  margin: 28px 0 26px;
+}
+
+.session[data-phase='running'] .session__now strong {
+  flex: none;
+  max-width: 100%;
+  overflow: visible;
+  font-size: clamp(30px, 5.4vw, 54px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.session[data-phase='running'] .session__window {
+  font-size: clamp(22px, 3.4vw, 34px);
+  color: var(--accent-fg);
+}
+
+.session[data-phase='running'] .progress {
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.session[data-phase='running'] .session__lede {
+  margin-top: 26px;
+  color: var(--text-3);
+}
+
+.session[data-phase='running'] .session__keys {
+  justify-content: center;
+  opacity: 0.6;
+}
+
+.dump[data-focusing] .today-list {
+  margin-top: auto;
+  opacity: 0.1;
+  filter: blur(1.5px);
+  transition:
+    opacity 0.25s var(--ease-out),
+    filter 0.25s var(--ease-out);
+}
+
+.dump[data-focusing] .today-list:hover,
+.dump[data-focusing] .today-list:focus-within {
+  opacity: 0.75;
+  filter: none;
+}
+
+.app[data-focusing] .topbar,
+.app[data-focusing] .statusbar {
+  opacity: 0.18;
+  transition: opacity 0.25s var(--ease-out);
+}
+
+.app[data-focusing] .topbar:hover,
+.app[data-focusing] .statusbar:hover {
+  opacity: 1;
+}

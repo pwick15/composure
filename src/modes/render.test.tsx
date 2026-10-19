@@ -152,8 +152,18 @@ describe('screens', () => {
     expect(html).toContain('Next: <b>pay rent</b> · 25m')
     expect(html).toContain('done by') // a live finish time instead of an invitation
     expect(html).not.toContain('start now')
+    expect(html).toContain('data-focusing="true"') // the screen gives the task the room and dims the rest
     expect(items).toHaveLength(4)
     expect(render(<FocusPill />)).toMatch(/\d\d:\d\d/)
+  })
+
+  it('Today is not in focus view before a session starts or after time is up', () => {
+    seed()
+    expect(render(<TodayMode />)).not.toContain('data-focusing')
+    const run = { session: 1, queue: ['f', 'r'], index: 1, startedAt: 0, phase: 'over' as const }
+    Object.assign(snapshot, { run })
+    setState({ run })
+    expect(render(<TodayMode />)).not.toContain('data-focusing')
   })
 
   it('Today after time is up asks what to do with what is left', () => {
