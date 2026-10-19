@@ -19,11 +19,12 @@ interface DayProps {
   num: number
   items: Item[]
   currentId: string | null
+  picked: Set<string>
   landed: { id: string; n: number } | null
   today: string
 }
 
-function DayBox({ col, num, items, currentId, landed, today }: DayProps) {
+function DayBox({ col, num, items, currentId, picked, landed, today }: DayProps) {
   const flash = landed && items.some((i) => i.id === landed.id) ? landed.n : null
   const home = items.some((i) => i.id === currentId)
   return (
@@ -56,6 +57,7 @@ function DayBox({ col, num, items, currentId, landed, today }: DayProps) {
               key={it.id}
               item={it}
               selected={it.id === currentId}
+              picked={picked.has(it.id)}
               fresh={landed?.id === it.id}
               meta={col.key === LATER && isDateSlot(it.slot) ? slotLabel(it.slot, today) : undefined}
               onSelect={() => deckFocus('plan', it.id)}
@@ -71,6 +73,8 @@ export function PlanMode() {
   const all = useStore((s) => s.items)
   const deck = useStore((s) => s.decks.plan)
   const landed = useStore((s) => s.landed)
+  const pickedIds = useStore((s) => s.picked?.ids)
+  const picked = useMemo(() => new Set(pickedIds), [pickedIds])
   const today = todayKey()
   const cols = useMemo(() => planColumns(today), [today])
 
@@ -108,6 +112,7 @@ export function PlanMode() {
         tags={
           current && (
             <>
+              {picked.size > 1 && <span className="tag tag--focus">{picked.size} picked</span>}
               <QuadrantTag item={current} />
               <SlotTag item={current} today={today} />
               <TimeTag item={current} />
@@ -168,6 +173,7 @@ export function PlanMode() {
             num={i + 1}
             items={itemsInColumn(all, col.key, today)}
             currentId={currentId}
+            picked={picked}
             landed={landed}
             today={today}
           />

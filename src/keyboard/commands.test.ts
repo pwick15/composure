@@ -57,6 +57,25 @@ describe('alt+arrows', () => {
   })
 })
 
+describe('shift+arrows', () => {
+  it('⇧↑/⇧↓ pick several on Sort, Plan and Today; Sort moves between rows with ⌘↑/⌘↓; ⇧←/⇧→ still move sideways', () => {
+    const shiftUp = key({ key: 'ArrowUp', code: 'ArrowUp', shiftKey: true })
+    for (const m of ['sort', 'plan', 'today'] as const) expect(findCommand(shiftUp, m, false)?.id).toBe(`${m}.pickUp`)
+    expect(findCommand(key({ key: 'ArrowUp', code: 'ArrowUp', ...mod }), 'sort', false)?.id).toBe('sort.shift.up')
+    expect(findCommand(key({ key: 'ArrowLeft', code: 'ArrowLeft', shiftKey: true }), 'sort', false)?.id).toBe('sort.shift.left')
+    expect(findCommand(key({ key: 'ArrowRight', code: 'ArrowRight', shiftKey: true }), 'today', false)?.id).toBe('today.sessionNext')
+  })
+
+  it('esc drops the picking, only while something is picked', () => {
+    const esc = key({ key: 'Escape', code: 'Escape' })
+    setState({ picked: null })
+    expect(findCommand(esc, 'today', false)?.id).not.toBe('pick.clear')
+    setState({ picked: { anchor: 'a', ids: ['a', 'b'] } })
+    expect(findCommand(esc, 'today', false)?.id).toBe('pick.clear')
+    setState({ picked: null })
+  })
+})
+
 describe('mod+S', () => {
   it('sets the day on every screen and while typing, so the browser never offers to save the page', () => {
     const modS = key({ key: 's', code: 'KeyS', ...mod })

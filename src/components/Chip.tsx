@@ -10,13 +10,15 @@ interface ChipProps {
   ref?: Ref<HTMLDivElement>
   /** The thought selected with ↑/↓, also shown large in the tray. */
   selected?: boolean
+  /** Highlighted together with others (⇧↑/⇧↓). */
+  picked?: boolean
   /** Just landed here: flash once. */
   fresh?: boolean
   meta?: string
   onSelect?: () => void
 }
 
-export function Chip({ item, ref, selected, fresh, meta, onSelect }: ChipProps) {
+export function Chip({ item, ref, selected, picked, fresh, meta, onSelect }: ChipProps) {
   return (
     <motion.div
       ref={ref}
@@ -25,6 +27,7 @@ export function Chip({ item, ref, selected, fresh, meta, onSelect }: ChipProps) 
       className="chip"
       data-q={item.quadrant ?? 'none'}
       data-selected={selected || undefined}
+      data-picked={picked || undefined}
       data-fresh={fresh || undefined}
       initial={{ opacity: 0, scale: 0.94 }}
       animate={{ opacity: 1, scale: 1 }}

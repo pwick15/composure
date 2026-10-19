@@ -56,6 +56,12 @@ export interface State {
   trayExit: TrayExit
   landed: { id: string; n: number } | null
 
+  /**
+   * Thoughts highlighted together with ⇧↑/⇧↓ (in reading order, the selected one at one end).
+   * Keys act on all of them. Null when just the one is selected. Not persisted.
+   */
+  picked: { anchor: string; ids: string[] } | null
+
   // today
   todayCursor: string | null
 
@@ -76,7 +82,7 @@ export interface State {
   // overlays
   palette: { open: boolean; seed: string; nonce: number }
   /** The "when" picker, while it's open: the thought (and its open subtasks) it will give a day to. */
-  when: { ids: string[]; text: string; current: Slot | null } | null
+  when: { ids: string[]; text: string; current: Slot | null; many?: boolean } | null
   helpOpen: boolean
   toasts: Toast[]
 
@@ -102,6 +108,8 @@ export const useStore = create<State>()(
         trayEditing: null,
         trayExit: { x: 0, y: -1 },
         landed: null,
+
+        picked: null,
 
         todayCursor: null,
         archiveCursor: null,

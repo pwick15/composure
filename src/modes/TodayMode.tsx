@@ -350,6 +350,7 @@ export function TodayMode() {
   const adding = useStore((s) => s.todayAdd !== null)
   const cursor = useStore((s) => s.todayCursor)
   const editing = useStore((s) => s.trayEditing)
+  const pickedIds = useStore((s) => s.picked?.ids)
   const run = useStore((s) => s.run)
   const today = todayKey()
 
@@ -394,6 +395,7 @@ export function TodayMode() {
           layout="position"
           className="row today-row"
           data-selected={selected || undefined}
+          data-picked={pickedIds?.includes(item.id) || undefined}
           data-focus={isActive || undefined}
           data-left={leftSet.has(item.id) || undefined}
           initial={{ opacity: 0, y: -6 }}

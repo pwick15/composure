@@ -18,10 +18,11 @@ interface QuadrantProps {
   meta: QuadrantMeta
   items: Item[]
   currentId: string | null
+  picked: Set<string>
   landed: { id: string; n: number } | null
 }
 
-function QuadrantBox({ meta, items, currentId, landed }: QuadrantProps) {
+function QuadrantBox({ meta, items, currentId, picked, landed }: QuadrantProps) {
   const flash = landed && items.some((i) => i.id === landed.id) ? landed.n : null
   const home = items.some((i) => i.id === currentId)
   return (
@@ -53,6 +54,7 @@ function QuadrantBox({ meta, items, currentId, landed }: QuadrantProps) {
               key={it.id}
               item={it}
               selected={it.id === currentId}
+              picked={picked.has(it.id)}
               fresh={landed?.id === it.id}
               onSelect={() => deckFocus('sort', it.id)}
             />
@@ -68,6 +70,8 @@ export function SortMode() {
   const all = useStore((s) => s.items)
   const deck = useStore((s) => s.decks.sort)
   const landed = useStore((s) => s.landed)
+  const pickedIds = useStore((s) => s.picked?.ids)
+  const picked = useMemo(() => new Set(pickedIds), [pickedIds])
   const today = todayKey()
 
   // Parents are labels for their subtasks, so only the subtasks are sorted.
@@ -109,6 +113,7 @@ export function SortMode() {
         tags={
           current && (
             <>
+              {picked.size > 1 && <span className="tag tag--focus">{picked.size} picked</span>}
               <QuadrantTag item={current} />
               <SlotTag item={current} today={today} />
               <TimeTag item={current} nudge />
@@ -155,11 +160,11 @@ export function SortMode() {
         <div className="axis axis--x">Not urgent</div>
         <div className="axis axis--y">Important</div>
         {QUADRANTS.slice(0, 2).map((q) => (
-          <QuadrantBox key={q.id} meta={q} items={byQuadrant[q.id]} currentId={currentId} landed={landed} />
+          <QuadrantBox key={q.id} meta={q} items={byQuadrant[q.id]} currentId={currentId} picked={picked} landed={landed} />
         ))}
         <div className="axis axis--y">Not important</div>
         {QUADRANTS.slice(2).map((q) => (
-          <QuadrantBox key={q.id} meta={q} items={byQuadrant[q.id]} currentId={currentId} landed={landed} />
+          <QuadrantBox key={q.id} meta={q} items={byQuadrant[q.id]} currentId={currentId} picked={picked} landed={landed} />
         ))}
       </div>
     </div>

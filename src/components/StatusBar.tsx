@@ -18,6 +18,15 @@ const h = (keys: string | string[], label: string, literal = false): Hint => ({
 function hintsFor(s: State): Hint[] {
   if (s.trayEditing) return [h('enter', 'save'), h('escape', 'cancel')]
 
+  // Several picked (⇧↑/⇧↓): what the keys can do to all of them.
+  if (s.picked) {
+    const all = [h(['shift+up', 'shift+down'], 'pick more'), h('mod+k', 'done'), h('mod+s', 'when'), h(['-', '='], 'time')]
+    const rest = [h('mod+backspace', 'delete'), h('escape', 'just one')]
+    if (s.mode === 'today') return [...all, h(['shift+left', 'shift+right'], 'session'), h('t', 'not today'), ...rest]
+    if (s.mode === 'plan') return [h('1–7', 'day', true), h(['shift+left', 'shift+right'], 'day'), ...all, ...rest]
+    return [h(['q', 'w', 'a', 's'], 'file'), h(['shift+left', 'shift+right'], 'quadrant'), ...all, ...rest]
+  }
+
   if (s.mode === 'dump') {
     if (s.editing)
       return [
@@ -84,6 +93,7 @@ function hintsFor(s: State): Hint[] {
       h('e', 'edit'),
       h(['up', 'down'], 'move'),
       h(['alt+up', 'alt+down'], 'reorder'),
+      h(['shift+up', 'shift+down'], 'pick several'),
       h('mod+k', 'done'),
       h('mod+s', 'when'),
       h(['shift+left', 'shift+right'], 'session'),

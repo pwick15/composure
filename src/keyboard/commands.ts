@@ -492,6 +492,27 @@ export const COMMANDS: Command[] = [
     ]
   }),
 
+  // ------------------------------------------------------------ ⇧ up/down: pick several, then act on all of them
+  ...(['sort', 'plan', 'today'] as const).flatMap((m): Command[] => {
+    const group = m === 'sort' ? 'Sort' : m === 'plan' ? 'Plan' : 'Today'
+    const keywords = 'select multiple several highlight range bulk many'
+    return [
+      { id: `${m}.pickUp`, title: 'Pick several: extend the selection up', hud: 'Pick ↑', group, scope: m, keys: ['shift+up'], repeat: true, keywords, run: () => a.pickExtend(-1) },
+      { id: `${m}.pickDown`, title: 'Pick several: extend the selection down', hud: 'Pick ↓', group, scope: m, keys: ['shift+down'], repeat: true, keywords, run: () => a.pickExtend(1) },
+    ]
+  }),
+  {
+    id: 'pick.clear',
+    title: 'Back to one selected thought',
+    hud: 'Unpick',
+    group: 'General',
+    keys: ['escape'],
+    when: () => getState().picked !== null,
+    palette: false,
+    sheet: false,
+    run: a.pickClear,
+  },
+
   // ------------------------------------------------------------ ⌥ arrows: put it where you want in the list
   ...(['sort', 'plan', 'today'] as const).flatMap((m): Command[] => {
     const group = m === 'sort' ? 'Sort' : m === 'plan' ? 'Plan' : 'Today'
@@ -505,19 +526,19 @@ export const COMMANDS: Command[] = [
   // ------------------------------------------------------------ shift+arrows: move the thought itself
   ...(
     [
-      ['up', -1, 0, 'Move up a quadrant'],
-      ['down', 1, 0, 'Move down a quadrant'],
-      ['left', 0, -1, 'Move to the left quadrant'],
-      ['right', 0, 1, 'Move to the right quadrant'],
+      ['up', -1, 0, 'Move up a quadrant', 'mod'],
+      ['down', 1, 0, 'Move down a quadrant', 'mod'],
+      ['left', 0, -1, 'Move to the left quadrant', 'shift'],
+      ['right', 0, 1, 'Move to the right quadrant', 'shift'],
     ] as const
   ).map(
-    ([key, dr, dc, title]): Command => ({
+    ([key, dr, dc, title, modifier]): Command => ({
       id: `sort.shift.${key}`,
       title,
       hud: 'Move',
       group: 'Sort',
       scope: 'sort',
-      keys: [`shift+${key}`],
+      keys: [`${modifier}+${key}`],
       repeat: true,
       palette: false,
       sheet: false,
@@ -793,7 +814,7 @@ export const SHEET_HINTS: SheetHint[] = [
   { group: 'Dump', title: 'While typing: finish (double-tap ⇧ or esc)', keys: ['escape'] },
   { group: 'Dump', title: 'While typing: line above / below', keys: ['up', 'down'] },
   { group: 'Dump', title: 'On an empty line: delete and step back', keys: ['backspace'] },
-  { group: 'Sort', title: 'Move the thought between quadrants', keys: ['shift+up', 'shift+down', 'shift+left', 'shift+right'] },
+  { group: 'Sort', title: 'Move the thought between quadrants', keys: ['mod+up', 'mod+down', 'shift+left', 'shift+right'] },
   { group: 'Plan', title: 'Plan for today … +6 days', keys: ['1–7'], literal: true },
   { group: 'Plan', title: 'Move a day earlier / later', keys: ['shift+left', 'shift+right'] },
   { group: 'Sort', title: 'How long it takes: 5m 15m 30m 1h 2h 4h', keys: ['1–6'], literal: true },

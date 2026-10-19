@@ -157,6 +157,23 @@ describe('screens', () => {
     expect(render(<FocusPill />)).toMatch(/\d\d:\d\d/)
   })
 
+  it('Today highlights the picked tasks, and Sort and Plan mark them and say how many', () => {
+    seed()
+    load([
+      { ...base, id: 'a', text: 'one', quadrant: 'do', slot: today, minutes: 5 },
+      { ...base, id: 'b', text: 'two', quadrant: 'do', slot: today, minutes: 10 },
+    ])
+    const picked = { anchor: 'a', ids: ['a', 'b'] }
+    const decks = { sort: { cursor: 'b', trail: [], resume: null }, plan: { cursor: 'b', trail: [], resume: null } }
+    Object.assign(snapshot, { picked, decks })
+    setState({ picked, decks, todayCursor: 'b' })
+    expect(render(<TodayMode />).match(/data-picked="true"/g)).toHaveLength(2)
+    const sort = render(<SortMode />)
+    expect(sort.match(/data-picked="true"/g)).toHaveLength(2)
+    expect(sort).toContain('2 picked')
+    expect(render(<PlanMode />)).toContain('data-picked="true"')
+  })
+
   it('Today is not in focus view before a session starts or after time is up', () => {
     seed()
     expect(render(<TodayMode />)).not.toContain('data-focusing')

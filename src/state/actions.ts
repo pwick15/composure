@@ -86,7 +86,7 @@ export function undo() {
   if (!prev) return toast('Nothing to undo')
   const changed = changedId(prev, s.items)
   const hidden = settled(s.items)
-  set({ items: prev, past: s.past.slice(0, -1), future: [s.items, ...s.future], editing: null, dumpFinish: null })
+  set({ items: prev, past: s.past.slice(0, -1), future: [s.items, ...s.future], editing: null, dumpFinish: null, picked: null })
   // A thought that undo brings back out of hiding is selected, so you can see what came back.
   if (s.mode === 'dump' && changed && hidden.has(changed) && liveItems().some((i) => i.id === changed)) set({ selectedId: changed })
   // In Sort and Plan, the thought that changed comes back to the tray, ready to re-file.
@@ -367,6 +367,7 @@ function resetCursors() {
     archiveCursor: null,
     todayAdd: null,
     dumpFinish: null,
+    picked: null,
   })
 }
 
@@ -774,7 +775,7 @@ function wander(m: DeckMode, to: string, exit: TrayExit) {
   const queued = (id: string | null) => id !== null && queue.some((i) => i.id === id)
   const { resume } = get().decks[m]
   setDeck(m, { cursor: to, resume: queued(to) ? null : (resume ?? (queued(from) ? from : null)) })
-  set({ trayExit: exit, trayEditing: null })
+  set({ trayExit: exit, trayEditing: null, picked: null })
 }
 
 function exitToward(m: DeckMode, value: string | null): TrayExit {
@@ -789,27 +790,82 @@ function exitToward(m: DeckMode, value: string | null): TrayExit {
   return { x: (i - (cols.length - 1) / 2) / 2, y: 1.6 }
 }
 
-/** Files the selected thought (a quadrant in Sort, a slot in Plan) and moves on. */
+// ---------------------------------------------------------------- picking several (⇧↑ ⇧↓)
+//
+// ⇧↑/⇧↓ highlight a run of thoughts, like selecting text. Every key that acts on "the selected
+// thought" (filing, time, day, session, done, delete, when) then acts on all of them. Moving the
+// selection any other way, or esc, goes back to one.
+
+/** What the keys act on: everything picked, else just the selected thought. */
+function targetIds(cursor: string | null): string[] {
+  const picked = get().picked?.ids.filter((id) => findItem(id))
+  if (picked && picked.length > 1 && cursor && picked.includes(cursor)) return picked
+  return cursor ? [cursor] : []
+}
+
+/** The thought selected on this screen and the screen's order (the one ↑/↓ walks), if it has one to pick in. */
+function pickScope(): { cursor: string | null; order: string[] } | null {
+  const { mode, items } = get()
+  if (mode === 'sort' || mode === 'plan') {
+    return { cursor: currentIdFor(mode), order: groupsFor(mode).flat().map((i) => i.id) }
+  }
+  if (mode === 'today') return { cursor: todayCurrent()?.id ?? null, order: todayList(items, todayKey()).map((i) => i.id) }
+  return null
+}
+
+/** ⇧↑/⇧↓: move the selection a step and highlight everything between it and where it started. */
+export function pickExtend(dir: -1 | 1) {
+  const scope = pickScope()
+  const { mode } = get()
+  if (!scope?.cursor) return
+  const { cursor, order } = scope
+  const i = order.indexOf(cursor)
+  if (i === -1) return
+  const j = clamp(i + dir, 0, order.length - 1)
+  const held = get().picked?.anchor
+  const anchor = held && order.includes(held) ? held : cursor
+  if (j !== i) {
+    if (isDeck(mode)) wander(mode, order[j], { x: 0, y: -dir * 0.6 })
+    else set({ todayCursor: order[j] })
+  }
+  const a = order.indexOf(anchor)
+  const ids = order.slice(Math.min(a, j), Math.max(a, j) + 1)
+  set({ picked: ids.length > 1 ? { anchor, ids } : null })
+}
+
+/** esc: back to just the selected one. */
+export function pickClear() {
+  if (get().picked) set({ picked: null })
+}
+
+const pickedNote = (n: number) => (n > 1 ? ` ${n} thoughts` : '')
+
+/** Files the selected thought (a quadrant in Sort, a slot in Plan) and moves on. Files all picked ones together. */
 export function deckFile(m: DeckMode, value: string | null) {
   const cur = m === 'sort' ? sortCurrent() : planCurrent()
   if (!cur) return nothingHere(m)
+  const ids = targetIds(cur.id)
+  const filing = new Set(ids)
   const queueBefore = groupsFor(m)[0]
   const orderBefore = groupsFor(m).flat()
-  patch(cur.id, m === 'sort' ? { quadrant: value as Quadrant | null } : { slot: value })
+  transact(() => ids.forEach((id) => patch(id, m === 'sort' ? { quadrant: value as Quadrant | null } : { slot: value })))
 
-  // Back to where you left off if you wandered, else the next thought in the queue.
+  // Back to where you left off if you wandered, else the next thought in the queue (not one just filed).
   const { resume, trail } = get().decks[m]
+  const waiting = queueBefore.filter((i) => i.id === cur.id || !filing.has(i.id))
   let next =
-    resume && resume !== cur.id && groupsFor(m)[0].some((i) => i.id === resume)
+    resume && !filing.has(resume) && groupsFor(m)[0].some((i) => i.id === resume)
       ? resume
-      : nextInQueue(queueBefore, cur.id)
+      : nextInQueue(waiting, cur.id)
   if (!next && !queueBefore.some((i) => i.id === cur.id)) {
     // Nothing queued and you were browsing filed thoughts: stay at the same place in the list.
     const i = orderBefore.findIndex((it) => it.id === cur.id)
-    next = orderBefore[i + 1]?.id ?? orderBefore[i - 1]?.id ?? null
+    next = [...orderBefore.slice(i + 1), ...orderBefore.slice(0, i).reverse()].find((it) => !filing.has(it.id))?.id ?? null
   }
+  if (ids.length > 1) toast(`Filed${pickedNote(ids.length)}`, 'mod+z')
+  set({ picked: null })
 
-  setDeck(m, { cursor: next, resume: null, trail: [...trail.filter((id) => id !== cur.id), cur.id].slice(-100) })
+  setDeck(m, { cursor: next, resume: null, trail: [...trail.filter((id) => !filing.has(id)), ...ids].slice(-100) })
   const lands = value !== null && (m === 'sort' || columnFor(value, todayKey()) !== null)
   set((s) => ({
     trayExit: exitToward(m, value),
@@ -879,20 +935,28 @@ function landHere(m: DeckMode, id: string, lands: boolean) {
 export function sortShift(dRow: number, dCol: number) {
   const cur = sortCurrent()
   if (!cur) return nothingHere('sort')
-  let next: Quadrant | null
-  if (!cur.quadrant) {
+  // Each picked thought slides from wherever it is; the ones that can't move stay.
+  const moves = targetIds(cur.id).flatMap((id) => {
+    const it = findItem(id)
+    const next = it ? shiftedQuadrant(it, dRow, dCol) : undefined
+    return it && next !== undefined && next !== it.quadrant ? [{ id, next }] : []
+  })
+  if (!moves.length) return
+  transact(() => moves.forEach((m) => patch(m.id, { quadrant: m.next })))
+  landHere('sort', cur.id, moves.some((m) => m.next !== null))
+}
+
+/** Where a thought lands when slid a step in Sort's grid; undefined if it can't go that way. */
+function shiftedQuadrant(it: Item, dRow: number, dCol: number): Quadrant | null | undefined {
+  if (!it.quadrant) {
     // Unsorted sits above the grid: down or left enters Do, right enters Schedule.
-    if (dRow < 0) return
-    next = dCol > 0 ? 'schedule' : 'do'
-  } else {
-    const q = QUADRANT_BY_ID[cur.quadrant]
-    const row = q.row + dRow
-    const col = clamp(q.col + dCol, 0, 1)
-    next = row < 0 ? null : QUADRANTS.find((x) => x.row === clamp(row, 0, 1) && x.col === col)!.id
+    if (dRow < 0) return undefined
+    return dCol > 0 ? 'schedule' : 'do'
   }
-  if (next === cur.quadrant) return
-  patch(cur.id, { quadrant: next })
-  landHere('sort', cur.id, next !== null)
+  const q = QUADRANT_BY_ID[it.quadrant]
+  const row = q.row + dRow
+  const col = clamp(q.col + dCol, 0, 1)
+  return row < 0 ? null : QUADRANTS.find((x) => x.row === clamp(row, 0, 1) && x.col === col)!.id
 }
 
 /** Shift+←/→ in Plan: a day earlier or later. Left of today unplans; right of Later stays in Later. */
@@ -901,12 +965,16 @@ export function planShift(dir: -1 | 1) {
   if (!cur) return nothingHere('plan')
   const today = todayKey()
   const keys = planColumns(today).map((c) => c.key)
-  const col = columnFor(cur.slot, today)
-  const i = col === null ? (dir > 0 ? 0 : -1) : keys.indexOf(col) + dir
-  const next = i < 0 ? null : keys[Math.min(i, keys.length - 1)]
-  if (next === col) return
-  patch(cur.id, { slot: next })
-  landHere('plan', cur.id, next !== null)
+  const moves = targetIds(cur.id).flatMap((id) => {
+    const it = findItem(id)
+    const col = it ? columnFor(it.slot, today) : null
+    const i = col === null ? (dir > 0 ? 0 : -1) : keys.indexOf(col) + dir
+    const next = i < 0 ? null : keys[Math.min(i, keys.length - 1)]
+    return it && next !== col ? [{ id, next }] : []
+  })
+  if (!moves.length) return
+  transact(() => moves.forEach((m) => patch(m.id, { slot: m.next })))
+  landHere('plan', cur.id, moves.some((m) => m.next !== null))
 }
 
 export function deckFocus(m: DeckMode, id: string) {
@@ -960,7 +1028,7 @@ function leaveDeck(m: DeckMode, cur: Item, change: () => void) {
     next = (orderBefore[i + 1] ?? orderBefore[i - 1])?.id ?? null
   }
   setDeck(m, { cursor: next, resume: null })
-  set({ trayExit: { x: 0, y: -1 }, trayEditing: null })
+  set({ trayExit: { x: 0, y: -1 }, trayEditing: null, picked: null })
 }
 
 // ---------------------------------------------------------------- the same keys on every screen
@@ -975,7 +1043,9 @@ export function completeCurrent() {
   if (mode === 'archive') return archiveReopen()
   const cur = trayCurrent()
   if (!cur) return nothingHere(mode)
-  leaveDeck(mode, cur, () => toggleDone(cur.id))
+  const ids = targetIds(cur.id)
+  leaveDeck(mode, cur, () => transact(() => ids.forEach(toggleDone)))
+  if (ids.length > 1) toast(`Done. Archived${pickedNote(ids.length)}`, 'mod+z')
 }
 
 export function deleteCurrent() {
@@ -985,8 +1055,9 @@ export function deleteCurrent() {
   if (mode === 'archive') return archiveDelete()
   const cur = trayCurrent()
   if (!cur) return nothingHere(mode)
-  leaveDeck(mode, cur, () => removeItem(cur.id))
-  toast(`Deleted "${truncate(cur.text)}"`, 'mod+z')
+  const ids = targetIds(cur.id)
+  leaveDeck(mode, cur, () => transact(() => ids.forEach(removeItem)))
+  toast(ids.length > 1 ? `Deleted${pickedNote(ids.length)}` : `Deleted "${truncate(cur.text)}"`, 'mod+z')
 }
 
 // ---------------------------------------------------------------- order by hand
@@ -1038,7 +1109,7 @@ function noTarget() {
 export function estimateSet(minutes: number | null) {
   const cur = estimateTarget()
   if (!cur) return noTarget()
-  patch(cur.id, { minutes })
+  transact(() => targetIds(cur.id).forEach((id) => patch(id, { minutes })))
 }
 
 export const estimatePreset = (n: number) => estimateSet(PRESETS[n - 1] ?? null)
@@ -1047,7 +1118,8 @@ export const estimatePreset = (n: number) => estimateSet(PRESETS[n - 1] ?? null)
 export function estimateStep(dir: 1 | -1) {
   const cur = estimateTarget()
   if (!cur) return noTarget()
-  patch(cur.id, { minutes: stepMinutes(cur.minutes, dir) })
+  // Each one steps from its own estimate.
+  transact(() => targetIds(cur.id).forEach((id) => patch(id, { minutes: stepMinutes(findItem(id)?.minutes ?? null, dir) })))
 }
 
 // ---------------------------------------------------------------- today
@@ -1066,7 +1138,14 @@ export function todayMove(dir: -1 | 1) {
   if (!list.length) return nothingToday()
   const cur = todayCurrent()
   const i = list.findIndex((it) => it.id === cur?.id)
-  set({ todayCursor: list[clamp(i + dir, 0, list.length - 1)].id })
+  set({ todayCursor: list[clamp(i + dir, 0, list.length - 1)].id, picked: null })
+}
+
+/** The task to land on once `gone` leave Today's list: the next one down (wrapping if asked), else the one above. */
+function todayAfter(list: Item[], curId: string, gone: Set<string>, wrap = false): string | null {
+  const i = list.findIndex((it) => it.id === curId)
+  const after = [...list.slice(i + 1), ...(wrap ? list.slice(0, i) : [])]
+  return (after.find((it) => !gone.has(it.id)) ?? list.slice(0, i).reverse().find((it) => !gone.has(it.id)))?.id ?? null
 }
 
 /** X / Space: tick it off, which sends it to the Archive, and move to the next task. */
@@ -1074,11 +1153,11 @@ export function todayToggle() {
   const cur = todayCurrent()
   if (!cur) return nothingToday()
   const list = todayList(get().items, todayKey())
-  const i = list.findIndex((it) => it.id === cur.id)
-  const next = [...list.slice(i + 1), ...list.slice(0, i)][0]
-  patch(cur.id, { done: true })
-  set({ todayCursor: next?.id ?? null })
-  toast(next ? 'Done. Archived. Next up' : "Done. That's everything for today", 'mod+z')
+  const ids = targetIds(cur.id)
+  const next = todayAfter(list, cur.id, new Set(ids), true)
+  transact(() => ids.forEach((id) => patch(id, { done: true })))
+  set({ todayCursor: next, picked: null })
+  toast(next ? `Done. Archived${pickedNote(ids.length)}. Next up` : "Done. That's everything for today", 'mod+z')
   sessionSync() // a running session moves straight on to the next task
 }
 
@@ -1087,11 +1166,11 @@ export function todayDelete() {
   const cur = todayCurrent()
   if (!cur) return nothingToday()
   const list = todayList(get().items, todayKey())
-  const i = list.findIndex((it) => it.id === cur.id)
-  const next = list[i + 1] ?? list[i - 1]
-  removeItem(cur.id)
-  set({ todayCursor: next?.id ?? null })
-  toast(`Deleted "${truncate(cur.text)}"`, 'mod+z')
+  const ids = targetIds(cur.id)
+  const next = todayAfter(list, cur.id, new Set(ids))
+  transact(() => ids.forEach(removeItem))
+  set({ todayCursor: next, picked: null })
+  toast(ids.length > 1 ? `Deleted${pickedNote(ids.length)}` : `Deleted "${truncate(cur.text)}"`, 'mod+z')
   sessionSync()
 }
 
@@ -1100,11 +1179,11 @@ export function todayDefer() {
   const cur = todayCurrent()
   if (!cur) return nothingToday()
   const list = todayList(get().items, todayKey())
-  const i = list.findIndex((it) => it.id === cur.id)
-  const next = list[i + 1] ?? list[i - 1]
-  patch(cur.id, { slot: addDays(todayKey(), 1) })
-  set({ todayCursor: next?.id ?? null })
-  toast(`"${truncate(cur.text, 24)}" moved to tomorrow`, 'mod+z')
+  const ids = targetIds(cur.id)
+  const next = todayAfter(list, cur.id, new Set(ids))
+  transact(() => ids.forEach((id) => patch(id, { slot: addDays(todayKey(), 1) })))
+  set({ todayCursor: next, picked: null })
+  toast(ids.length > 1 ? `${plural(ids.length, 'task')} moved to tomorrow` : `"${truncate(cur.text, 24)}" moved to tomorrow`, 'mod+z')
   sessionSync()
 }
 
@@ -1216,7 +1295,7 @@ export function todayAddPaste(merged: string, rest: string[]) {
 }
 
 export function todayFocus(id: string) {
-  set({ todayCursor: id })
+  set({ todayCursor: id, picked: null })
 }
 
 // ---------------------------------------------------------------- work sessions
@@ -1318,14 +1397,19 @@ export function todayMoveSession(dir: -1 | 1) {
   const cur = todayCurrent()
   if (!cur) return nothingToday()
   const groups = todaySessions(get().items, todayKey())
-  const at = groups.findIndex((g) => g.session === cur.session)
-  const here = groups[at]
-  let session: number | undefined
-  if (dir < 0) session = groups[at - 1]?.session
-  else session = groups[at + 1]?.session ?? (here.items.length > 1 ? here.session + 1 : undefined)
-  if (session === undefined) return
-  patch(cur.id, { session })
-  set({ todayCursor: cur.id }) // the selection stays on the task you moved
+  const picked = new Set(targetIds(cur.id))
+  // Each picked task goes to its neighbouring session; past the last one starts a new session
+  // (unless the picked tasks are all that session has, which would only rename it).
+  const moves = groups.flatMap((here, at) => {
+    const mine = here.items.filter((it) => picked.has(it.id))
+    if (!mine.length) return []
+    const session =
+      dir < 0 ? groups[at - 1]?.session : (groups[at + 1]?.session ?? (mine.length < here.items.length ? here.session + 1 : undefined))
+    return session === undefined ? [] : mine.map((it) => ({ id: it.id, session }))
+  })
+  if (!moves.length) return
+  transact(() => moves.forEach((m) => patch(m.id, { session: m.session })))
+  set({ todayCursor: cur.id }) // the selection (and what's picked) stays on what you moved
 }
 
 // ---------------------------------------------------------------- archive
@@ -1398,8 +1482,10 @@ export function whenOpen() {
   if (s.todayAdd || s.trayEditing || s.editing?.kind === 'draft') return toast('Finish typing first')
   const item = whenSubject()
   if (!item) return toast(s.mode === 'archive' ? 'Reopen it first' : 'Select a thought first')
-  const kids = childrenOf(s.items, item.id).filter((k) => !k.done)
-  set({ when: { ids: [item.id, ...kids.map((k) => k.id)], text: item.text, current: item.slot } })
+  const picked = s.mode === 'dump' ? [item.id] : targetIds(item.id)
+  const ids = picked.flatMap((id) => [id, ...childrenOf(s.items, id).filter((k) => !k.done).map((k) => k.id)])
+  const many = picked.length > 1
+  set({ when: { ids, text: many ? plural(picked.length, 'thought') : item.text, current: item.slot, many } })
 }
 
 export function whenClose() {
@@ -1419,18 +1505,19 @@ export function whenApply(slot: Slot | null) {
   if (mode === 'plan' && cur.id === planCurrent()?.id && w.ids.length === 1) deckFile('plan', slot)
   else {
     const list = mode === 'today' ? todayList(get().items, today) : []
-    const i = list.findIndex((it) => it.id === cur.id)
     transact(() => w.ids.forEach((id) => patch(id, { slot })))
     if (mode === 'today' && slot !== today) {
-      set({ todayCursor: (list[i + 1] ?? list[i - 1])?.id ?? null })
+      set({ todayCursor: todayAfter(list, cur.id, new Set(w.ids)) })
       sessionSync()
     }
   }
+  set({ picked: null })
   if (mode === 'dump') {
     finishResync()
     landBeside(cur.id, dumpOrder)
   }
-  toast(`"${truncate(cur.text, 24)}" → ${slot === null ? 'no day' : slotLabel(slot, today)}`, 'mod+z')
+  const what = w.many ? w.text : `"${truncate(cur.text, 24)}"`
+  toast(`${what} → ${slot === null ? 'no day' : slotLabel(slot, today)}`, 'mod+z')
 }
 
 // ---------------------------------------------------------------- navigation

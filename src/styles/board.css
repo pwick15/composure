@@ -439,6 +439,11 @@
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
+.chip[data-picked] {
+  border-color: var(--accent-fg);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-2));
+}
+
 .chip[data-fresh] {
   animation: chip-land 700ms var(--ease-out);
 }

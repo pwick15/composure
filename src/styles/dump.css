@@ -337,6 +337,20 @@
   color: var(--accent-fg);
 }
 
+.today-row[data-picked] {
+  background: color-mix(in srgb, var(--accent) 11%, var(--surface-2));
+}
+
+.today-row[data-picked]::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  bottom: -1px;
+  width: 3px;
+  background: var(--accent);
+}
+
 .today-row[data-focus] {
   background: color-mix(in srgb, var(--accent) 7%, var(--surface-2));
 }
