@@ -636,6 +636,7 @@ function landBeside(id: string, before: Item[]) {
   const shown = new Set(liveItems().map((i) => i.id))
   if (shown.has(id)) return
   const at = before.findIndex((i) => i.id === id)
+  if (at === -1) return // it was never in the list (opened from search): keep the selection where it is
   const near = [...before.slice(at + 1), ...before.slice(0, at).reverse()].find((i) => shown.has(i.id))
   set({ selectedId: near?.id ?? null })
 }

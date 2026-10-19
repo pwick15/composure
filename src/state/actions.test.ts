@@ -555,6 +555,15 @@ describe('export and import', () => {
     expect(getState().toasts.at(-1)?.text).toBe('Imported 4 thoughts')
   })
 
+  it('an export carries the session names, and importing never renames a session you named', async () => {
+    const before = world()
+    const exported = makeBackup(before, { [todayKey()]: { 1: 'Deep work', 2: 'Admin' } })
+    setState(initial, true)
+    setState({ sessionNames: { [todayKey()]: { 2: 'Errands' } } })
+    await importFile(file(exported))
+    expect(getState().sessionNames[todayKey()]).toEqual({ 1: 'Deep work', 2: 'Errands' })
+  })
+
   it('importing never overwrites: what is already here stays, only new thoughts are added', async () => {
     const before = world()
     const exported = makeBackup(before)
@@ -1286,6 +1295,15 @@ describe('dump: sorted and planned thoughts step aside', () => {
     expect(shown()).toEqual(['c', 'a'])
   })
 
+  it('closing a thought that search opened leaves the selection where it was', () => {
+    dump('a', 'b', 'c')
+    fill('a', done)
+    setState({ selectedId: task('c').id })
+    a.jumpTo(task('a').id)
+    a.sheetClose()
+    expect(getState().selectedId).toBe(task('c').id)
+  })
+
   it('search opens a hidden thought right where you are, without unhiding everything', () => {
     dump('a')
     fill('a', done)
@@ -1609,6 +1627,19 @@ describe('order by hand (⌥↑ ⌥↓)', () => {
     a.todayFocus(task('long').id)
     a.orderMove(-1)
     expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['long', 'short'])
+  })
+
+  it('Plan: in a day split into sessions, a thought moves within its own session', () => {
+    dump('a', 'b', 'c')
+    withMinutes({ a: 5, b: 10, c: 15 }, { slot: todayKey() })
+    setState({ items: getState().items.map((i) => (i.text === 'c' ? { ...i, session: 2 } : i)) })
+    a.setMode('plan')
+    a.deckFocus('plan', task('b').id)
+    a.orderMove(1) // b is the last of session 1: nothing changes, not even the order kept behind the scenes
+    expect(itemsInColumn(getState().items, todayKey(), todayKey()).map((i) => i.text)).toEqual(['a', 'b', 'c'])
+    expect(getState().items.some((i) => i.manual)).toBe(false)
+    a.orderMove(-1)
+    expect(itemsInColumn(getState().items, todayKey(), todayKey()).map((i) => i.text)).toEqual(['b', 'a', 'c'])
   })
 
   it('Today: moves within its session and never into another', () => {

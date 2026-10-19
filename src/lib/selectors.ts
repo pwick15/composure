@@ -214,7 +214,13 @@ export function todayList(all: Item[], today: string): Item[] {
 export function listOf(all: Item[], view: View, id: string, today: string): Item[] | null {
   const has = (list: Item[]) => list.some((i) => i.id === id)
   if (view === 'sort') return sortGroups(all).slice(1).find(has) ?? null
-  if (view === 'plan') return planGroups(all, today).find(has) ?? null
+  if (view === 'plan') {
+    const list = planGroups(all, today).find(has) ?? null
+    const item = all.find((i) => i.id === id)
+    // A day split into sessions orders each session on its own, the way Today does.
+    const onDay = item && isDateSlot(item.slot) && columnFor(item.slot, today) === item.slot
+    return list && onDay ? list.filter((i) => i.session === item.session) : list
+  }
   return todaySessions(all, today).find((g) => has(g.items))?.items ?? null
 }
 

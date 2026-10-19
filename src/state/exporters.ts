@@ -1,8 +1,8 @@
 import { todayKey } from '../lib/dates'
-import { makeBackup, matrixMarkdown, parseBackup, planICS, planMarkdown, thingsURL } from '../lib/export'
+import { makeBackup, matrixMarkdown, mergeSessionNames, parseBackup, parseSessionNames, planICS, planMarkdown, thingsURL } from '../lib/export'
 import { parseNotes } from '../lib/text'
 import { importItems, makeItem, toast } from './actions'
-import { getState as get } from './store'
+import { getState as get, setState as set } from './store'
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -55,9 +55,9 @@ export function sendToThings() {
 }
 
 export function downloadBackup() {
-  const { items } = get()
+  const { items, sessionNames } = get()
   if (!items.length) return toast('Nothing to export yet', 'shift+1')
-  download(`composure-${todayKey()}.json`, 'application/json', makeBackup(items))
+  download(`composure-${todayKey()}.json`, 'application/json', makeBackup(items, sessionNames))
   toast(`Exported ${items.length} ${items.length === 1 ? 'thought' : 'thoughts'}. Import it anywhere with ⌘O`)
 }
 
@@ -72,6 +72,7 @@ export async function importFile(file: File) {
     const isExport = text.trimStart().startsWith('{')
     const incoming = isExport ? parseBackup(text) : parseNotes(text).map(({ text: t, done }) => ({ ...makeItem(t), done }))
     if (!incoming.length) return toast('Nothing to import in that file')
+    if (isExport) set({ sessionNames: mergeSessionNames(get().sessionNames, parseSessionNames(text)) })
     const { added, skipped } = importItems(incoming)
     const what = `${added} ${added === 1 ? 'thought' : 'thoughts'}`
     if (!added) return toast(`Already here: all ${skipped} thoughts`)

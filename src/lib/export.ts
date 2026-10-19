@@ -140,16 +140,43 @@ export function thingsURL(all: Item[], today: string): string | null {
 
 // ---------------------------------------------------------------- backup
 
+/** Day → session number → name. */
+export type SessionNames = Record<string, Record<number, string>>
+
 export interface Backup {
   app: 'composure'
   version: 1
   exportedAt: string
   items: Item[]
+  /** What you called your work sessions. Older backups don't have it. */
+  sessionNames?: SessionNames
 }
 
-export function makeBackup(items: Item[]): string {
+export function makeBackup(items: Item[], sessionNames: SessionNames = {}): string {
   const backup: Backup = { app: 'composure', version: 1, exportedAt: new Date().toISOString(), items }
+  if (Object.keys(sessionNames).length) backup.sessionNames = sessionNames
   return JSON.stringify(backup, null, 2)
+}
+
+/** The session names in a backup, keeping only well-formed ones (a day key, a session number, some text). */
+export function parseSessionNames(json: string): SessionNames {
+  const raw = (JSON.parse(json) as Partial<Backup>)?.sessionNames
+  const out: SessionNames = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [day, names] of Object.entries(raw)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !names || typeof names !== 'object') continue
+    for (const [n, name] of Object.entries(names)) {
+      if (/^[1-9]\d*$/.test(n) && typeof name === 'string' && name.trim()) (out[day] ??= {})[Number(n)] = name.trim()
+    }
+  }
+  return out
+}
+
+/** Adds a backup's session names without renaming any session you've already named. */
+export function mergeSessionNames(existing: SessionNames, incoming: SessionNames): SessionNames {
+  const out: SessionNames = { ...existing }
+  for (const [day, names] of Object.entries(incoming)) out[day] = { ...names, ...existing[day] }
+  return out
 }
 
 const QUADRANT_IDS = new Set<string>(QUADRANTS.map((q) => q.id))
