@@ -1,11 +1,11 @@
 import { motion, MotionConfig } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { CommandPalette } from './components/CommandPalette'
-import { WhenPicker } from './components/WhenPicker'
+import { Help } from './components/Help'
 import { KeystrokeHUD } from './components/KeystrokeHUD'
 import { SessionDriver } from './components/SessionDriver'
-import { ShortcutSheet } from './components/ShortcutSheet'
 import { StatusBar } from './components/StatusBar'
+import { ThoughtSheet } from './components/ThoughtSheet'
 import { Toasts } from './components/Toasts'
 import { TopBar } from './components/TopBar'
 import { useGlobalKeys } from './keyboard/useGlobalKeys'
@@ -15,6 +15,7 @@ import { DumpMode } from './modes/DumpMode'
 import { PlanMode } from './modes/PlanMode'
 import { SortMode } from './modes/SortMode'
 import { TodayMode } from './modes/TodayMode'
+import { useDayRollover } from './state/day'
 import { useStore } from './state/store'
 
 const VIEWS = { dump: DumpMode, sort: SortMode, plan: PlanMode, today: TodayMode, archive: ArchiveMode }
@@ -25,6 +26,7 @@ export default function App() {
   const theme = useStore((s) => s.theme)
   const focusing = useStore((s) => s.mode === 'today' && s.run?.phase === 'running')
   useGlobalKeys()
+  useDayRollover()
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -60,8 +62,8 @@ export default function App() {
         <SessionDriver />
         <Toasts />
         <CommandPalette />
-        <WhenPicker />
-        <ShortcutSheet />
+        <ThoughtSheet />
+        <Help />
       </div>
     </MotionConfig>
   )

@@ -1,11 +1,11 @@
-import { addDays, columnFor, planColumns, slotLabel, todayKey } from '../lib/dates'
+import { addDays, columnFor, isDateSlot, LATER, planColumns, todayKey } from '../lib/dates'
 import { mergeItems } from '../lib/export'
+import { CLEARED, FIELD_LABEL, fieldOptions, type Field, type FieldOption, type SessionChoice } from '../lib/fields'
 import { askForNotifications, notificationsBlocked, notify } from '../lib/notify'
-import { finishOptions } from '../lib/finish'
 import { fmt, PRESETS, stepMinutes } from '../lib/duration'
 import { uid } from '../lib/id'
 import { QUADRANTS, QUADRANT_BY_ID } from '../lib/quadrants'
-import { activeId, advance, effMinutes, endPause, leftovers, pauseLeftMs, startRun } from '../lib/session'
+import { activeId, advance, effMinutes, endPause, leftovers, pauseLeftMs, startRun, taskClock, windowOf } from '../lib/session'
 import { parsePause, PAUSE_PRESETS } from '../lib/interrupt'
 import {
   nextInQueue,
@@ -20,6 +20,7 @@ import {
   resolveTodayCursor,
   GAPS,
   gapsOf,
+  isPlannable,
   listOf,
   settled,
   sortGroups,
@@ -30,7 +31,8 @@ import {
 } from '../lib/selectors'
 import { childrenOf, draftIndex, isDone, lastInBlock, leaves, parentKey, treeOrder } from '../lib/tree'
 import type { Item, Mode, Quadrant, Slot, View } from '../lib/types'
-import { type Deck, type Editing, freshDeck, getState as get, setState as set, type State, type TrayExit } from './store'
+import { whenOptions } from '../lib/when'
+import { type Deck, type Editing, freshDeck, getState as get, setState as set, type Sheet, type State, type TrayExit } from './store'
 
 export type EditTarget = Exclude<Editing, null>
 
@@ -87,7 +89,8 @@ export function undo() {
   if (!prev) return toast('Nothing to undo')
   const changed = changedId(prev, s.items)
   const hidden = settled(s.items)
-  set({ items: prev, past: s.past.slice(0, -1), future: [s.items, ...s.future], editing: null, dumpFinish: null, picked: null })
+  set({ items: prev, past: s.past.slice(0, -1), future: [s.items, ...s.future], editing: null, picked: null })
+  sessionReopen(s.items)
   // A thought that undo brings back out of hiding is selected, so you can see what came back.
   if (s.mode === 'dump' && changed && hidden.has(changed) && liveItems().some((i) => i.id === changed)) set({ selectedId: changed })
   // In Sort and Plan, the thought that changed comes back to the tray, ready to re-file.
@@ -205,12 +208,12 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 export const updateText = (id: string, text: string) => patch(id, { text })
 
-/** Deletes a thought and its subtasks. Returns how many subtasks went with it (and says so). */
-export function removeItem(id: string): number {
+/** Deletes a thought and its subtasks. Returns how many subtasks went with it (and says so, unless `quiet`). */
+export function removeItem(id: string, quiet = false): number {
   const item = findItem(id)
   const kids = childrenOf(get().items, id).length
   commit(get().items.filter((i) => i.id !== id && i.parentId !== id))
-  if (item && kids) toast(`Deleted "${truncate(item.text)}" and ${plural(kids, 'subtask')}`, 'mod+z')
+  if (item && kids && !quiet) toast(`Deleted "${truncate(item.text)}" and ${plural(kids, 'subtask')}`, 'mod+z')
   return kids
 }
 
@@ -218,7 +221,7 @@ export function removeItem(id: string): number {
  * Ticks a thought off, and it goes straight to the Archive. A parent has no done flag of its own:
  * ticking it ticks every subtask, or clears them if all were done (only possible from the Archive).
  */
-export function toggleDone(id: string) {
+export function toggleDone(id: string, quiet = false) {
   const item = findItem(id)
   if (!item) return
   const kids = childrenOf(get().items, id)
@@ -226,10 +229,20 @@ export function toggleDone(id: string) {
     const allDone = kids.every((k) => k.done)
     const now = Date.now()
     commit(get().items.map((i) => (i.parentId === id ? { ...i, done: !allDone, doneAt: allDone ? null : i.done ? i.doneAt : now } : i)))
-    return toast(allDone ? 'Marked not done' : `Done, with ${plural(kids.length, 'subtask')}. Archived`, 'mod+z')
+    if (!quiet) toast(allDone ? 'Marked not done' : `Done, with ${plural(kids.length, 'subtask')}. Archived`, 'mod+z')
+    return
   }
   patch(id, { done: !item.done })
-  toast(item.done ? 'Marked not done' : 'Done. Archived', 'mod+z')
+  if (!quiet) toast(item.done ? 'Marked not done' : 'Done. Archived', 'mod+z')
+}
+
+/** Picked thoughts less the subtasks whose parent is picked too: acting on the parent covers them. */
+function covering(ids: string[]): string[] {
+  const picked = new Set(ids)
+  return ids.filter((id) => {
+    const parent = findItem(id)?.parentId
+    return !(parent && picked.has(parent))
+  })
 }
 
 /** Moves a thought up or down among its siblings; a parent takes its subtasks with it. */
@@ -362,14 +375,14 @@ function resetCursors() {
     selectedId: null,
     editing: null,
     decks: { sort: freshDeck(), plan: freshDeck() },
-    trayEditing: null,
     landed: null,
     todayCursor: null,
     archiveCursor: null,
     todayAdd: null,
-    dumpFinish: null,
+    sheet: null,
     picked: null,
     pausing: false,
+    sessionRename: null,
   })
 }
 
@@ -420,7 +433,6 @@ function draftSub(id: string): EditTarget {
 }
 
 export function startDraft(seed = '') {
-  set({ dumpFinish: null })
   const s = get()
   const selected = findItem(s.selectedId)
   if (selected) return set({ editing: draftBelow(selected.id, seed) })
@@ -430,7 +442,7 @@ export function startDraft(seed = '') {
 }
 
 export function startEdit(id: string, caret: 'start' | 'end' = 'end') {
-  set({ editing: { kind: 'item', id, caret }, selectedId: id, dumpFinish: null })
+  set({ editing: { kind: 'item', id, caret }, selectedId: id })
 }
 
 export function sameTarget(e: Editing, target: EditTarget): boolean {
@@ -540,18 +552,20 @@ export function dumpSelect(dir: -1 | 1) {
   if (!items.length) return
   const i = items.findIndex((it) => it.id === selectedId)
   const next = i === -1 ? (dir > 0 ? 0 : items.length - 1) : clamp(i + dir, 0, items.length - 1)
-  set({ selectedId: items[next].id })
+  set({ selectedId: items[next].id, picked: null })
 }
 
+/** ⌘⌫: delete the selected thought (or the picked ones) and select what's next to it. */
 export function dumpDelete() {
   const item = findItem(get().selectedId)
   if (!item) return
-  set({ dumpFinish: null })
+  const ids = covering(targetIds(item.id))
   const at = treeOrder(liveItems()).findIndex((i) => i.id === item.id)
-  const kids = removeItem(item.id)
+  const kids = transact(() => ids.reduce((n, id) => n + removeItem(id, true), 0))
   const after = treeOrder(liveItems())
-  set({ selectedId: after[Math.min(at, after.length - 1)]?.id ?? null })
-  if (!kids) toast(`Deleted "${truncate(item.text)}"`, 'mod+z')
+  set({ selectedId: after[Math.min(at, after.length - 1)]?.id ?? null, picked: null })
+  const what = ids.length > 1 ? plural(ids.length, 'thought') : `"${truncate(item.text)}"`
+  toast(`Deleted ${what}${kids ? ` and ${plural(kids, 'subtask')}` : ''}`, 'mod+z')
 }
 
 export function dumpMove(dir: -1 | 1) {
@@ -603,109 +617,18 @@ export function editorIndent(target: EditTarget, value: string, dir: 1 | -1) {
 export function dumpToggleDone() {
   const { selectedId } = get()
   if (!selectedId) return toast('Select a thought first')
-  set({ dumpFinish: null })
-  const { prev, next } = neighbours(selectedId)
-  toggleDone(selectedId)
-  const left = new Set(liveItems().map((i) => i.id))
-  set({ selectedId: [next, prev].find((id) => id !== null && left.has(id)) ?? null })
+  const ids = covering(targetIds(selectedId))
+  const order = treeOrder(liveItems())
+  if (ids.length > 1) {
+    transact(() => ids.forEach((id) => toggleDone(id, true)))
+    toast(`Done. Archived ${plural(ids.length, 'thought')}`, 'mod+z')
+  } else toggleDone(selectedId)
+  set({ picked: null })
+  landBeside(selectedId, order)
 }
 
 export function dumpEscape() {
-  set({ selectedId: null })
-}
-
-// ---------------------------------------------------------------- dump: fill in what's missing
-//
-// → on a thought asks for whatever it lacks: a priority, then a day, then a time. The number keys
-// pick (the same numbers as Sort and Plan; ←/→ and ↵ work too) and it applies at once, moving on
-// to the next thing missing. When nothing is missing the thought has been dealt with, so it
-// leaves Dump. ↑/↓ skip to another missing field; ← from the first option, ⌫ or esc close.
-// ⌘Z undoes a pick, and a thought on a parent fills in every open subtask that lacks it.
-
-/** The thoughts a fill-in applies to: a parent's subtasks that lack something, else the thought itself. */
-function finishTargets(id: string): Item[] {
-  const items = live(get().items)
-  const item = items.find((i) => i.id === id)
-  if (!item) return []
-  const kids = childrenOf(items, id)
-  return (kids.length ? kids : [item]).filter((t) => gapsOf(t).length)
-}
-
-/** The fields still missing somewhere in the targets, in the order they are asked. */
-const finishNeeds = (id: string): Gap[] => {
-  const targets = finishTargets(id)
-  return GAPS.filter((g) => targets.some((t) => gapsOf(t).includes(g)))
-}
-
-/** Whether the fill-in is open on a thought that is still there. */
-export const finishIsOpen = () => {
-  const f = get().dumpFinish
-  return f !== null && finishNeeds(f.id).includes(f.step)
-}
-
-/** → : start filling in the selected thought. */
-export function finishOpen() {
-  const id = get().selectedId
-  if (!findItem(id)) return toast('Select a thought first')
-  const [step] = finishNeeds(id!)
-  if (!step) return toast('Nothing missing. It has a priority, a day and a time')
-  set({ dumpFinish: { id: id!, step, col: 0 } })
-}
-
-export const finishClose = () => set({ dumpFinish: null })
-
-/** ←/→ along the options. ← from the first one closes. */
-export function finishArrow(dir: -1 | 1) {
-  const f = get().dumpFinish
-  if (!f) return
-  const col = f.col + dir
-  if (col < 0) return finishClose()
-  const last = finishOptions(f.step, todayKey()).length - 1
-  set({ dumpFinish: { ...f, col: Math.min(col, last) } })
-}
-
-/** ↑/↓: jump to the previous or next field that's missing. */
-export function finishStep(dir: -1 | 1) {
-  const f = get().dumpFinish
-  if (!f) return
-  const needs = finishNeeds(f.id)
-  const step = needs[needs.indexOf(f.step) + dir]
-  if (step) set({ dumpFinish: { ...f, step, col: 0 } })
-}
-
-/** ↵: pick the highlighted option. */
-export function finishEnter() {
-  const f = get().dumpFinish
-  if (f) finishPick(f.col + 1)
-}
-
-/** 1–8: pick that option and apply it to everything that lacks it. */
-export function finishPick(n: number) {
-  const f = get().dumpFinish
-  const option = f && finishOptions(f.step, todayKey())[n - 1]
-  const item = f && findItem(f.id)
-  if (!f || !option || !item) return
-  const order = treeOrder(liveItems())
-  transact(() => finishTargets(f.id).filter((t) => gapsOf(t).includes(f.step)).forEach((t) => patch(t.id, option.change)))
-  toast(`"${truncate(item.text, 24)}" → ${option.label}`, 'mod+z')
-
-  const needs = finishNeeds(f.id)
-  if (needs.length) {
-    // Carry on with the next thing missing, else back to an earlier one skipped over.
-    const step = needs.find((g) => GAPS.indexOf(g) > GAPS.indexOf(f.step)) ?? needs[0]
-    return set({ dumpFinish: { id: f.id, step, col: 0 } })
-  }
-  set({ dumpFinish: null })
-  landBeside(f.id, order)
-}
-
-/** After something else changed the thought (⌘S gave it a day): ask for what's still missing, or close. */
-function finishResync() {
-  const f = get().dumpFinish
-  if (!f) return
-  const needs = finishNeeds(f.id)
-  if (needs.includes(f.step)) return
-  set({ dumpFinish: needs.length ? { ...f, step: needs[0], col: 0 } : null })
+  set({ selectedId: null, picked: null })
 }
 
 /** If a thought just left Dump's list, select its neighbour (next one down, else the one above). */
@@ -723,7 +646,7 @@ export function togglePlanned() {
   set({ showPlanned })
   if (!showPlanned) {
     const selected = get().selectedId
-    if (selected && !liveItems().some((i) => i.id === selected)) set({ selectedId: null, dumpFinish: null })
+    if (selected && !liveItems().some((i) => i.id === selected)) set({ selectedId: null })
   }
   toast(showPlanned ? 'Showing sorted and planned thoughts' : 'Sorted and planned thoughts hidden')
 }
@@ -777,7 +700,7 @@ function wander(m: DeckMode, to: string, exit: TrayExit) {
   const queued = (id: string | null) => id !== null && queue.some((i) => i.id === id)
   const { resume } = get().decks[m]
   setDeck(m, { cursor: to, resume: queued(to) ? null : (resume ?? (queued(from) ? from : null)) })
-  set({ trayExit: exit, trayEditing: null, picked: null })
+  set({ trayExit: exit, picked: null })
 }
 
 function exitToward(m: DeckMode, value: string | null): TrayExit {
@@ -807,7 +730,11 @@ function targetIds(cursor: string | null): string[] {
 
 /** The thought selected on this screen and the screen's order (the one ↑/↓ walks), if it has one to pick in. */
 function pickScope(): { cursor: string | null; order: string[] } | null {
-  const { mode, items } = get()
+  const { mode, items, selectedId } = get()
+  if (mode === 'dump') {
+    const order = treeOrder(liveItems()).map((i) => i.id)
+    return { cursor: selectedId && order.includes(selectedId) ? selectedId : null, order }
+  }
   if (mode === 'sort' || mode === 'plan') {
     return { cursor: currentIdFor(mode), order: groupsFor(mode).flat().map((i) => i.id) }
   }
@@ -828,6 +755,7 @@ export function pickExtend(dir: -1 | 1) {
   const anchor = held && order.includes(held) ? held : cursor
   if (j !== i) {
     if (isDeck(mode)) wander(mode, order[j], { x: 0, y: -dir * 0.6 })
+    else if (mode === 'dump') set({ selectedId: order[j] })
     else set({ todayCursor: order[j] })
   }
   const a = order.indexOf(anchor)
@@ -871,7 +799,6 @@ export function deckFile(m: DeckMode, value: string | null) {
   const lands = value !== null && (m === 'sort' || columnFor(value, todayKey()) !== null)
   set((s) => ({
     trayExit: exitToward(m, value),
-    trayEditing: null,
     landed: lands ? { id: cur.id, n: (s.landed?.n ?? 0) + 1 } : s.landed,
   }))
 }
@@ -930,7 +857,7 @@ export function deckBack(m: DeckMode) {
 
 function landHere(m: DeckMode, id: string, lands: boolean) {
   setDeck(m, { cursor: id })
-  set((s) => ({ trayEditing: null, landed: lands ? { id, n: (s.landed?.n ?? 0) + 1 } : s.landed }))
+  set((s) => ({ landed: lands ? { id, n: (s.landed?.n ?? 0) + 1 } : s.landed }))
 }
 
 /** Shift+arrows in Sort: slide the selected thought to the neighbouring quadrant. Up from the top row unsorts it. */
@@ -983,35 +910,6 @@ export function deckFocus(m: DeckMode, id: string) {
   wander(m, id, { x: 0, y: -1 })
 }
 
-// ---------------------------------------------------------------- tray (sort + plan)
-
-export function trayEdit() {
-  const cur = trayCurrent()
-  if (cur) set({ trayEditing: cur.id })
-}
-
-/** ⌘E on every screen: edit the text of whatever is selected, where it is. */
-export function editCurrent() {
-  const { mode, selectedId } = get()
-  if (mode === 'dump') {
-    if (!findItem(selectedId)) return toast('Select a thought first')
-    return startEdit(selectedId!)
-  }
-  const cur = mode === 'today' ? todayCurrent() : mode === 'archive' ? archiveCurrent() : trayCurrent()
-  if (!cur) return toast('Nothing selected')
-  set({ trayEditing: cur.id })
-}
-
-export function trayCommit(id: string, value: string) {
-  const text = value.trim()
-  if (text) updateText(id, text)
-  set({ trayEditing: null })
-}
-
-export function trayCancel() {
-  set({ trayEditing: null })
-}
-
 /**
  * Runs `change`, which takes the selected thought out of the deck (done or deleted), then lands on
  * what comes next: back where you left off if you wandered, else the next waiting thought, else
@@ -1030,7 +928,7 @@ function leaveDeck(m: DeckMode, cur: Item, change: () => void) {
     next = (orderBefore[i + 1] ?? orderBefore[i - 1])?.id ?? null
   }
   setDeck(m, { cursor: next, resume: null })
-  set({ trayExit: { x: 0, y: -1 }, trayEditing: null, picked: null })
+  set({ trayExit: { x: 0, y: -1 }, picked: null })
 }
 
 // ---------------------------------------------------------------- the same keys on every screen
@@ -1046,7 +944,7 @@ export function completeCurrent() {
   const cur = trayCurrent()
   if (!cur) return nothingHere(mode)
   const ids = targetIds(cur.id)
-  leaveDeck(mode, cur, () => transact(() => ids.forEach(toggleDone)))
+  leaveDeck(mode, cur, () => transact(() => ids.forEach((id) => toggleDone(id))))
   if (ids.length > 1) toast(`Done. Archived${pickedNote(ids.length)}`, 'mod+z')
 }
 
@@ -1058,7 +956,7 @@ export function deleteCurrent() {
   const cur = trayCurrent()
   if (!cur) return nothingHere(mode)
   const ids = targetIds(cur.id)
-  leaveDeck(mode, cur, () => transact(() => ids.forEach(removeItem)))
+  leaveDeck(mode, cur, () => transact(() => ids.forEach((id) => removeItem(id))))
   toast(ids.length > 1 ? `Deleted${pickedNote(ids.length)}` : `Deleted "${truncate(cur.text)}"`, 'mod+z')
 }
 
@@ -1070,6 +968,7 @@ export function deleteCurrent() {
 
 export function orderMove(dir: -1 | 1) {
   const { mode, items } = get()
+  if (mode === 'dump') return dumpMove(dir)
   if (mode !== 'sort' && mode !== 'plan' && mode !== 'today') return
   const cur = mode === 'today' ? todayCurrent() : trayCurrent()
   if (!cur) return toast('Nothing selected')
@@ -1097,6 +996,7 @@ export function orderAuto() {
 /** The thought the selected screen is showing: the tray card in Sort and Plan, the highlighted row in Today. */
 function estimateTarget(): Item | null {
   const { mode } = get()
+  if (mode === 'dump') return findItem(get().selectedId) ?? null
   if (mode === 'sort') return sortCurrent()
   if (mode === 'plan') return planCurrent()
   if (mode === 'today') return todayCurrent()
@@ -1104,14 +1004,24 @@ function estimateTarget(): Item | null {
 }
 
 function noTarget() {
-  toast(get().mode === 'dump' ? 'Estimates are set in Sort, Plan and Today' : 'Nothing selected')
+  toast(get().mode === 'dump' ? 'Select a thought first' : 'Nothing selected')
 }
 
-/** 1–6 in Sort: set how long it takes. The card stays put; filing it is a separate key. */
+/** What the time keys change: the picked thoughts (else the selected one), a parent standing for its open subtasks. */
+function timeTargets(cursor: string): string[] {
+  const { items } = get()
+  const ids = covering(targetIds(cursor)).flatMap((id) => {
+    const kids = childrenOf(items, id).filter((k) => !k.done)
+    return kids.length ? kids.map((k) => k.id) : [id]
+  })
+  return [...new Set(ids)]
+}
+
+/** ⌥1–⌥6: set how long it takes. The thought stays where it is. */
 export function estimateSet(minutes: number | null) {
   const cur = estimateTarget()
   if (!cur) return noTarget()
-  transact(() => targetIds(cur.id).forEach((id) => patch(id, { minutes })))
+  transact(() => timeTargets(cur.id).forEach((id) => patch(id, { minutes })))
 }
 
 export const estimatePreset = (n: number) => estimateSet(PRESETS[n - 1] ?? null)
@@ -1121,7 +1031,7 @@ export function estimateStep(dir: 1 | -1) {
   const cur = estimateTarget()
   if (!cur) return noTarget()
   // Each one steps from its own estimate.
-  transact(() => targetIds(cur.id).forEach((id) => patch(id, { minutes: stepMinutes(findItem(id)?.minutes ?? null, dir) })))
+  transact(() => timeTargets(cur.id).forEach((id) => patch(id, { minutes: stepMinutes(findItem(id)?.minutes ?? null, dir) })))
 }
 
 // ---------------------------------------------------------------- today
@@ -1150,13 +1060,14 @@ function todayAfter(list: Item[], curId: string, gone: Set<string>, wrap = false
   return (after.find((it) => !gone.has(it.id)) ?? list.slice(0, i).reverse().find((it) => !gone.has(it.id)))?.id ?? null
 }
 
-/** X / Space: tick it off, which sends it to the Archive, and move to the next task. */
+/** ⌘K: tick it off, which sends it to the Archive, and move to the next task. */
 export function todayToggle() {
   const cur = todayCurrent()
   if (!cur) return nothingToday()
   const list = todayList(get().items, todayKey())
   const ids = targetIds(cur.id)
   const next = todayAfter(list, cur.id, new Set(ids), true)
+  rememberTimeLeft(ids)
   transact(() => ids.forEach((id) => patch(id, { done: true })))
   set({ todayCursor: next, picked: null })
   toast(next ? `Done. Archived${pickedNote(ids.length)}. Next up` : "Done. That's everything for today", 'mod+z')
@@ -1170,7 +1081,7 @@ export function todayDelete() {
   const list = todayList(get().items, todayKey())
   const ids = targetIds(cur.id)
   const next = todayAfter(list, cur.id, new Set(ids))
-  transact(() => ids.forEach(removeItem))
+  transact(() => ids.forEach((id) => removeItem(id)))
   set({ todayCursor: next, picked: null })
   toast(ids.length > 1 ? `Deleted${pickedNote(ids.length)}` : `Deleted "${truncate(cur.text)}"`, 'mod+z')
   sessionSync()
@@ -1300,6 +1211,12 @@ export function todayFocus(id: string) {
   set({ todayCursor: id, picked: null })
 }
 
+/** Clicking a task's box ticks it off, the same as ⌘K on it. */
+export function todayTick(id: string) {
+  set({ todayCursor: id, picked: null })
+  todayToggle()
+}
+
 // ---------------------------------------------------------------- work sessions
 //
 // Today's tasks can be split into sessions (⇧← / ⇧→ moves the selected task between them). F starts
@@ -1307,18 +1224,49 @@ export function todayFocus(id: string) {
 // estimate, and the clock runs down from the total. Nothing is ticked off for you. When the last
 // window closes, what's still open is yours to finish, give more time, and carry on with.
 
-const sessionName = (session: number) => {
-  const i = todaySessions(get().items, todayKey()).findIndex((g) => g.session === session)
-  return `Session ${i === -1 ? session : i + 1}`
+/**
+ * What a session is called: the name you gave it, else "Session 2". Sessions keep their number all
+ * day, so the second one stays the second once the first is done.
+ */
+export const sessionName = (session: number, day = todayKey()) => get().sessionNames[day]?.[session] || `Session ${session}`
+
+/** ⌥R on Today: name the session the selected task is in. */
+export function sessionRenameOpen() {
+  const cur = todayCurrent()
+  if (!cur) return nothingToday()
+  set({ sessionRename: { day: todayKey(), session: cur.session } })
 }
+
+/** Clicking a session's name on Today. */
+export function sessionRenameAt(day: string, session: number) {
+  set({ sessionRename: { day, session } })
+}
+
+/** ↵ (or clicking away) on the name: keep it. An empty name goes back to "Session 2". */
+export function sessionRenameSave(value: string) {
+  const at = get().sessionRename
+  if (!at) return
+  const name = value.trim()
+  const today = todayKey()
+  // Names only matter from today on; older days' are dropped as you go.
+  const kept = Object.fromEntries(Object.entries(get().sessionNames).filter(([day]) => day >= today))
+  const day = { ...kept[at.day] }
+  if (name) day[at.session] = name
+  else delete day[at.session]
+  set({ sessionNames: { ...kept, [at.day]: day }, sessionRename: null })
+}
+
+export const sessionRenameCancel = () => set({ sessionRename: null })
 
 const openIds = (session: number) => new Set(openInSession(get().items, todayKey(), session).map((i) => i.id))
 
 const totalMinutes = (tasks: Item[]) => tasks.reduce((n, t) => n + effMinutes(t), 0)
 
-/** F: start the selected task's session, or stop the one running. */
+/** ⌥F: start the selected task's session, stop the one running, or carry on once time's up. */
 export function sessionToggle() {
-  if (get().run) return sessionStop()
+  const { run } = get()
+  if (run?.phase === 'over') return sessionCarryOn()
+  if (run) return sessionStop()
   sessionStart()
 }
 
@@ -1334,9 +1282,15 @@ export function sessionStart() {
   if (!started) return toast('Everything in this session is done')
   set({ run: started, todayCursor: tasks[0].id })
   askForNotifications()
-  toast(`${sessionName(cur.session)}: ${fmt(totalMinutes(tasks))} to work through`, 'f')
-  if (notificationsBlocked()) toast('Notifications are blocked here, so time-ups only show in this tab')
+  toast(`${sessionName(cur.session)}: ${fmt(totalMinutes(tasks))} to work through`, 'alt+f')
+  // Once per visit is enough: it won't change between sessions.
+  if (notificationsBlocked() && !warnedBlocked) {
+    warnedBlocked = true
+    toast('Notifications are blocked here, so time-ups only show in this tab')
+  }
 }
+
+let warnedBlocked = false
 
 export function sessionStop() {
   if (!get().run) return toast('No session running')
@@ -1406,7 +1360,7 @@ export function sessionSync() {
 /** I: ask what came up (or, if you're away, say you're back). */
 export function pauseOpen() {
   const { run, pausing } = get()
-  if (!run || run.phase !== 'running') return toast('Start a session first', 'f')
+  if (!run || run.phase !== 'running') return toast('Start a session first', 'alt+f')
   if (run.pause) return pauseEnd()
   set({ pausing: !pausing })
 }
@@ -1419,7 +1373,7 @@ export function pauseBegin(label: string, minutes: number | null) {
   set({ pausing: false })
   if (!run || run.phase !== 'running' || run.pause) return
   set({ run: { ...run, pause: { label, minutes, startedAt: Date.now() } } })
-  toast(`${label}${minutes ? ` · ${fmt(minutes)}` : ''}. Clock paused`, 'enter')
+  toast(`${label}${minutes ? ` · ${fmt(minutes)}` : ''}. Clock paused`, 'alt+p')
 }
 
 /** 1–4 on the line. */
@@ -1444,6 +1398,35 @@ export function pauseEnd() {
   toast(`Back. ${run.pause.label} took ${fmt(Math.max(1, Math.round(away / 60_000)))}`)
 }
 
+/** How much of its window a task had left when it was ticked off mid-session, so ⌘Z can hand it back. */
+const leftOnTick = new Map<string, number>()
+
+function rememberTimeLeft(ids: string[]) {
+  const { run, items } = get()
+  const active = run && activeId(run)
+  const win = run && windowOf(run, items)
+  if (!run || !active || !win || !ids.includes(active)) return
+  leftOnTick.set(active, Math.max(0, win.start + win.ms - taskClock(run, Date.now())))
+}
+
+/**
+ * After ⌘Z: a task the session had already passed is open again (ticked off by mistake). The session
+ * goes back to it with the time it had left, rather than leaving it behind marked "over time".
+ */
+function sessionReopen(before: Item[]) {
+  const { run, items } = get()
+  if (!run || run.phase !== 'running' || run.pause) return
+  const today = todayKey()
+  const openBefore = new Set(openInSession(before, today, run.session).map((i) => i.id))
+  const openNow = new Set(openInSession(items, today, run.session).map((i) => i.id))
+  const back = run.queue.findIndex((id, k) => k < run.index && openNow.has(id) && !openBefore.has(id))
+  if (back === -1) return
+  const id = run.queue[back]
+  const full = effMinutes(items.find((i) => i.id === id)!) * 60_000
+  const left = Math.min(full, leftOnTick.get(id) ?? full)
+  set({ run: { ...run, index: back, startedAt: Date.now() - (full - left) }, todayCursor: id })
+}
+
 /** While away: tell you once when a timed pause runs out. The task's clock stays held. */
 function pauseTick(run: NonNullable<State['run']>) {
   const { pause } = run
@@ -1451,7 +1434,19 @@ function pauseTick(run: NonNullable<State['run']>) {
   set({ run: { ...run, pause: { ...pause, over: true } } })
   const task = get().items.find((i) => i.id === activeId(run))?.text ?? ''
   notify(`${pause.label} is up`, task ? `Back to: ${truncate(task, 40)}` : undefined)
-  toast(`${pause.label} is up. ↵ when you're back`)
+  toast(`${pause.label} is up. ↵ when you're back`, 'enter')
+}
+
+/** 1–9 on Today: move the selected task (or the picked ones) to that session. One past the last starts a new one. */
+export function todayToSession(n: number) {
+  const cur = todayCurrent()
+  if (!cur) return nothingToday()
+  const last = Math.max(0, ...todaySessions(get().items, todayKey()).map((g) => g.session))
+  if (n > last + 1) return toast(`${sessionName(last + 1)} starts a new one`, String(last + 1))
+  const ids = targetIds(cur.id)
+  transact(() => ids.forEach((id) => patch(id, { session: n })))
+  set({ todayCursor: cur.id }) // the selection (and what's picked) stays on what you moved
+  sessionSync()
 }
 
 /** ⇧← / ⇧→: move the selected task to the previous or next session. Past the last one starts a new session. */
@@ -1524,77 +1519,320 @@ export function archiveDelete() {
   toast(`Deleted "${truncate(t.cur.text)}"`, 'mod+z')
 }
 
-// ---------------------------------------------------------------- when
+// ---------------------------------------------------------------- the thought sheet
 //
-// ⌘S on any screen gives the selected thought a day: type "tue", "in 2 days" or "24/12" and ↵
-// (see lib/when.ts). A thought with subtasks gives them all the day, like ticking it off does.
+// ↵ or ⌘E opens everything about the selected thought (or the picked ones) in one place: its text,
+// priority, day, time and session. ⌘S opens it on the day, → in Dump on the first thing missing,
+// and clicking a tag opens it on that tag's row. The numbers on each row pick (the same ones Sort
+// and Plan use), picks apply at once, and ⌘Z undoes them.
 
-/** The thought each screen has selected, if there is one to give a day to. */
-function whenSubject(): Item | null {
+let sheetNonce = 0
+/** Dump's list when the sheet opened, so closing it can land beside a thought that left the list. */
+let dumpOrderAtOpen: Item[] = []
+
+/** The thoughts the keys act on: the picked ones, else the one selected on this screen. */
+function subjectIds(): string[] {
   const { mode, selectedId } = get()
-  if (mode === 'dump') return findItem(selectedId) ?? null
-  if (mode === 'today') return todayCurrent()
-  if (mode === 'archive') return null
-  return trayCurrent()
+  const cur =
+    mode === 'dump' ? findItem(selectedId) : mode === 'today' ? todayCurrent() : mode === 'archive' ? archiveCurrent() : trayCurrent()
+  return cur ? targetIds(cur.id) : []
 }
 
-export function whenOpen() {
-  const s = get()
-  if (s.when) return
-  if (s.todayAdd || s.trayEditing || s.editing?.kind === 'draft') return toast('Finish typing first')
-  const item = whenSubject()
-  if (!item) return toast(s.mode === 'archive' ? 'Reopen it first' : 'Select a thought first')
-  const picked = s.mode === 'dump' ? [item.id] : targetIds(item.id)
-  const ids = picked.flatMap((id) => [id, ...childrenOf(s.items, id).filter((k) => !k.done).map((k) => k.id)])
-  const many = picked.length > 1
-  set({ when: { ids, text: many ? plural(picked.length, 'thought') : item.text, current: item.slot, many } })
+/**
+ * What a change to `field` lands on: each thought in the sheet, or a parent's open subtasks. When
+ * filling in, only the ones that lack it (or all of them, if none does).
+ */
+export function sheetTargets(sheet: Sheet, field: Field): Item[] {
+  const { items } = get()
+  const out = new Map<string, Item>()
+  for (const id of sheet.ids) {
+    const item = items.find((i) => i.id === id)
+    if (!item) continue
+    const kids = childrenOf(items, id).filter((k) => !k.done)
+    for (const t of kids.length ? kids : [item]) out.set(t.id, t)
+  }
+  const all = [...out.values()]
+  if (sheet.purpose !== 'fill' || !(GAPS as Field[]).includes(field)) return all
+  const lacking = all.filter((t) => gapsOf(t).includes(field as Gap))
+  return lacking.length ? lacking : all
 }
 
-export function whenClose() {
-  if (get().when) set({ when: null })
+/** What the sheet's thoughts still lack, in the order it asks for them. */
+function sheetNeeds(sheet: Sheet): Gap[] {
+  const all = sheetTargets({ ...sheet, purpose: 'edit' }, 'quadrant')
+  return GAPS.filter((g) => all.some((t) => gapsOf(t).includes(g)))
 }
 
-/** Gives the thought that day (or none) at once. In Plan it files it like 1–8 do, so ⌫ brings it back. */
-export function whenApply(slot: Slot | null) {
-  const w = get().when
-  if (!w) return
-  set({ when: null })
-  const cur = findItem(w.ids[0])
-  if (!cur) return
+/** The one day all the sheet's thoughts are planned for (a late one counts as today), whose sessions it offers. */
+export function sheetSessionDay(sheet: Sheet): string | null {
   const today = todayKey()
-  const mode = get().mode
-  const dumpOrder = mode === 'dump' ? treeOrder(liveItems()) : []
-  if (mode === 'plan' && cur.id === planCurrent()?.id && w.ids.length === 1) deckFile('plan', slot)
-  else {
-    const list = mode === 'today' ? todayList(get().items, today) : []
-    transact(() => w.ids.forEach((id) => patch(id, { slot })))
-    if (mode === 'today' && slot !== today) {
-      set({ todayCursor: todayAfter(list, cur.id, new Set(w.ids)) })
-      sessionSync()
+  const days = new Set(sheetTargets({ ...sheet, purpose: 'edit' }, 'session').map((t) => (isDateSlot(t.slot) ? (t.slot < today ? today : t.slot) : null)))
+  const [day] = days
+  return days.size === 1 && day ? day : null
+}
+
+/** A day's work sessions, in order, as Today and the sheet show them. */
+export function sessionsOn(day: string): SessionChoice[] {
+  const { items } = get()
+  const today = todayKey()
+  const list = day === today ? todayList(items, today) : leaves(live(items)).filter((i) => i.slot === day && isPlannable(i))
+  return [...new Set(list.map((i) => i.session))].sort((a, b) => a - b).map((n) => ({ session: n, label: sessionName(n, day) }))
+}
+
+/** The rows the sheet shows. A finished thought only has its text; the session row needs a day. */
+export function sheetRows(sheet: Sheet): Field[] {
+  const archived = archivedIds(get().items)
+  if (sheet.ids.every((id) => archived.has(id))) return ['text']
+  const rows: Field[] = sheet.ids.length === 1 ? ['text'] : []
+  rows.push('quadrant', 'slot', 'minutes')
+  if (sheetSessionDay(sheet)) rows.push('session')
+  return rows
+}
+
+/** The numbered options on one of the sheet's rows. */
+export function sheetOptions(sheet: Sheet, row: Field): FieldOption[] {
+  const day = row === 'session' ? sheetSessionDay(sheet) : null
+  return fieldOptions(row, todayKey(), day ? sessionsOn(day) : [])
+}
+
+/** The value every one of the sheet's thoughts has on a row, or undefined when they differ. */
+export function sheetValue<F extends Exclude<Field, 'text'>>(sheet: Sheet, row: F): Item[F] | undefined {
+  const values = new Set(sheetTargets({ ...sheet, purpose: 'edit' }, row).map((t) => t[row]))
+  return values.size === 1 ? [...values][0] : undefined
+}
+
+/** Whether an option is what the thoughts already have (a far-off day counts as Later). */
+export function isCurrentOption(sheet: Sheet, row: Field, option: FieldOption): boolean {
+  if (row === 'text') return false
+  const value = sheetValue(sheet, row)
+  if (value === undefined) return false
+  if (row === 'slot') return columnFor(value as Slot | null, todayKey()) === option.change.slot
+  return option.change[row] === value
+}
+
+/** Where the arrow keys start on a row: on what's already set, else the first option. */
+function currentCol(sheet: Sheet, row: Field): number {
+  return Math.max(0, sheetOptions(sheet, row).findIndex((o) => isCurrentOption(sheet, row, o)))
+}
+
+/** What the day row offers for what's typed on it, read the way people say days (lib/when.ts). */
+export function sheetReadings(sheet: Sheet) {
+  const value = sheetValue(sheet, 'slot')
+  return whenOptions(sheet.query ?? '', todayKey(), value === undefined ? LATER : value)
+}
+
+/** Opens the sheet on these thoughts: on `row`, or where the purpose starts. */
+export function sheetOpenFor(ids: string[], purpose: Sheet['purpose'], row?: Field, typing = false) {
+  const found = ids.filter((id) => findItem(id))
+  if (!found.length) return
+  const draft: Sheet = { ids: found, purpose, row: 'text', col: 0, query: null, receipt: null, nonce: ++sheetNonce }
+  const rows = sheetRows(draft)
+  const first = row && rows.includes(row) ? row : purpose === 'fill' ? sheetNeeds(draft)[0] : rows[0]
+  if (!first) return toast('Nothing missing. It has a priority, a day and a time')
+  dumpOrderAtOpen = get().mode === 'dump' ? treeOrder(liveItems()) : []
+  set({ sheet: { ...draft, row: first, col: currentCol(draft, first), query: typing && first === 'slot' ? '' : null } })
+}
+
+/** ↵ / ⌘E: everything about the selected thought (or the picked ones). ⌘S and → open it on a row. */
+export function sheetOpen(purpose: Sheet['purpose'] = 'edit', row?: Field, typing = false) {
+  const s = get()
+  if (s.sheet) return
+  if (s.todayAdd || s.editing?.kind === 'draft') return toast('Finish typing first')
+  if (s.mode === 'archive' && row === 'slot') return toast('Reopen it first')
+  const ids = subjectIds()
+  if (!ids.length) return toast(s.mode === 'dump' ? 'Select a thought first' : 'Nothing selected')
+  sheetOpenFor(ids, purpose, row, typing)
+}
+
+/** ⌘E (and ↵ on Sort, Plan, Today and the Archive): open the thought. */
+export const editCurrent = () => sheetOpen('edit')
+/** ⌘S: straight to the day, ready to type one. */
+export const whenOpen = () => sheetOpen('field', 'slot', true)
+/** → in Dump: ask for what the thought still lacks. */
+export const fillOpen = () => sheetOpen('fill')
+
+export function sheetClose() {
+  const sh = get().sheet
+  if (!sh) return
+  set({ sheet: null })
+  // A thought that now has a priority, a day and a time steps out of Dump: select its neighbour.
+  if (get().mode === 'dump') landBeside(sh.ids[0], dumpOrderAtOpen)
+}
+
+/** ↑/↓: the row above or below. */
+export function sheetRow(dir: -1 | 1) {
+  const sh = get().sheet
+  if (!sh) return
+  const rows = sheetRows(sh)
+  const row = rows[clamp(rows.indexOf(sh.row) + dir, 0, rows.length - 1)]
+  if (row && row !== sh.row) set({ sheet: { ...sh, row, col: currentCol(sh, row), query: null } })
+}
+
+/** A click on a row's label. */
+export function sheetGo(row: Field) {
+  const sh = get().sheet
+  if (sh && row !== sh.row) set({ sheet: { ...sh, row, col: currentCol(sh, row), query: null } })
+}
+
+/** ←/→: along the row's options (or the readings of a typed day). */
+export function sheetCol(dir: -1 | 1) {
+  const sh = get().sheet
+  if (!sh || sh.row === 'text') return
+  const n = sh.query !== null ? sheetReadings(sh).length : sheetOptions(sh, sh.row).length
+  set({ sheet: { ...sh, col: clamp(sh.col + dir, 0, Math.max(0, n - 1)) } })
+}
+
+/** Typing on the day row: a phrase to read ("next fri"), or null to go back to the numbers. */
+export function sheetType(query: string | null) {
+  const sh = get().sheet
+  if (sh) set({ sheet: { ...sh, row: 'slot', query, col: 0 } })
+}
+
+/** 1–9 (0 clears): pick that option on the row, at once, for everything in the sheet. */
+export function sheetPick(n: number) {
+  const sh = get().sheet
+  if (!sh || sh.row === 'text' || sh.query !== null) return
+  if (n === 0) {
+    const cleared = CLEARED[sh.row]
+    if (cleared) sheetApply(sh.row, cleared.change, cleared.label)
+    return
+  }
+  const option = sheetOptions(sh, sh.row).find((o) => o.n === n)
+  if (option) sheetApply(sh.row, option.change, option.label)
+}
+
+/** ↵: the highlighted option, or the highlighted reading of a typed day. */
+export function sheetEnter() {
+  const sh = get().sheet
+  if (!sh || sh.row === 'text') return
+  if (sh.query !== null) {
+    const reading = sheetReadings(sh)[sh.col]
+    if (reading) sheetApply('slot', { slot: reading.slot }, reading.label)
+    return
+  }
+  const option = sheetOptions(sh, sh.row)[sh.col]
+  if (option) sheetApply(sh.row, option.change, option.label)
+}
+
+/** ⌥1–⌥6 on the sheet: that time, whichever row you're on. */
+export function sheetTime(n: number) {
+  const sh = get().sheet
+  const option = sh && sheetOptions(sh, 'minutes').find((o) => o.n === n)
+  if (sh && option) sheetApply('minutes', option.change, option.label)
+}
+
+/** A click on an option: the same as its number. */
+export function sheetChoose(row: Field, option: FieldOption) {
+  const sh = get().sheet
+  if (sh) sheetApply(row, option.change, option.label)
+}
+
+/** Applies a change to everything in the sheet, then does what the sheet was opened for. */
+function sheetApply(field: Field, change: Partial<Item>, label: string) {
+  const sh = get().sheet
+  if (!sh) return
+  const targets = sheetTargets(sh, field)
+  if (!targets.length) return
+  const { mode } = get()
+  const today = todayKey()
+  const todayBefore = mode === 'today' ? todayList(get().items, today) : []
+  const cursorBefore = mode === 'today' ? todayCurrent()?.id : undefined
+
+  // In Plan, giving the card on the tray a day files it the way 1–8 do, so ⌫ brings it back.
+  if (mode === 'plan' && field === 'slot' && sh.purpose === 'field' && sh.ids.length === 1 && sh.ids[0] === planCurrent()?.id) {
+    deckFile('plan', change.slot ?? null)
+  } else {
+    transact(() => targets.forEach((t) => patch(t.id, change)))
+  }
+
+  // A task given another day (or session) moves out from under the cursor: land on the next one.
+  if (mode === 'today' && cursorBefore) {
+    const still = new Set(todayList(get().items, today).map((i) => i.id))
+    const gone = new Set(targets.map((t) => t.id).filter((id) => !still.has(id)))
+    if (gone.has(cursorBefore)) set({ todayCursor: todayAfter(todayBefore, cursorBefore, gone) })
+    sessionSync()
+  }
+
+  const many = targets.length > 1 ? `${plural(targets.length, 'thought')}: ` : ''
+  const receipt = `${many}${FIELD_LABEL[field]} → ${label}`
+  // Once the sheet closes its receipt goes with it, so a toast says what happened instead.
+  const subject = findItem(sh.ids[0])
+  const said = sh.ids.length > 1 || !subject ? receipt : `"${truncate(subject.text, 24)}" → ${label}`
+  if (sh.purpose === 'field') {
+    // One quick change, like a filing key: the picking is done with.
+    set({ picked: null })
+    sheetClose()
+    return toast(said, 'mod+z')
+  }
+  if (sh.purpose === 'fill') {
+    const needs = sheetNeeds(sh)
+    if (!needs.length) {
+      sheetClose()
+      return toast(said, 'mod+z')
     }
+    // On to the next thing missing, else back to one skipped over.
+    const next = needs.find((g) => GAPS.indexOf(g) > GAPS.indexOf(field as Gap)) ?? needs[0]
+    return set({ sheet: { ...sh, row: next, col: currentCol(sh, next), query: null, receipt } })
   }
-  set({ picked: null })
-  if (mode === 'dump') {
-    finishResync()
-    landBeside(cur.id, dumpOrder)
-  }
-  const what = w.many ? w.text : `"${truncate(cur.text, 24)}"`
-  toast(`${what} → ${slot === null ? 'no day' : slotLabel(slot, today)}`, 'mod+z')
+  set({ sheet: { ...sh, query: null, col: field === 'text' ? 0 : currentCol(sh, field), receipt } })
+}
+
+/** The sheet's text box: saves on ↵ and on leaving it. An empty box keeps the old text. */
+export function sheetSetText(value: string) {
+  const sh = get().sheet
+  const text = value.trim()
+  if (!sh || sh.ids.length !== 1 || !text) return
+  const item = findItem(sh.ids[0])
+  if (item && item.text !== text) updateText(item.id, text)
+}
+
+/** - / = in the sheet: a step shorter or longer, each thought from its own estimate. */
+export function sheetNudge(dir: 1 | -1) {
+  const sh = get().sheet
+  if (!sh) return
+  const targets = sheetTargets(sh, 'minutes')
+  transact(() => targets.forEach((t) => patch(t.id, { minutes: stepMinutes(findItem(t.id)?.minutes ?? null, dir) })))
+  const after = targets.length === 1 ? findItem(targets[0].id)?.minutes : undefined
+  const label = targets.length > 1 ? (dir > 0 ? 'longer' : 'shorter') : after ? fmt(after) : 'no time'
+  const next = get().sheet!
+  set({ sheet: { ...next, row: 'minutes', query: null, col: currentCol(next, 'minutes'), receipt: `time → ${label}` } })
+}
+
+const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id))
+
+/** ⌘K in the sheet: tick off what it shows (reopen, in the Archive), and close. */
+export function sheetDone() {
+  const sh = get().sheet
+  if (!sh) return
+  set({ sheet: null })
+  if (sameIds(sh.ids, subjectIds())) return completeCurrent()
+  transact(() => sh.ids.forEach((id) => toggleDone(id)))
+}
+
+/** ⌘⌫ in the sheet: delete what it shows, and close. */
+export function sheetDelete() {
+  const sh = get().sheet
+  if (!sh) return
+  set({ sheet: null })
+  if (sameIds(sh.ids, subjectIds())) return deleteCurrent()
+  transact(() => sh.ids.forEach((id) => removeItem(id)))
+  toast(sh.ids.length > 1 ? `Deleted ${plural(sh.ids.length, 'thought')}` : 'Deleted', 'mod+z')
 }
 
 // ---------------------------------------------------------------- navigation
 
+/** A thought picked in search: selected where it is on this screen, else opened right here. */
 export function jumpTo(id: string) {
   const { mode } = get()
   if (isDeck(mode) && inDeck(mode, id)) return deckFocus(mode, id)
   if (mode === 'today' && todayList(get().items, todayKey()).some((i) => i.id === id)) return todayFocus(id)
+  if (mode === 'dump' && liveItems().some((i) => i.id === id)) return set({ selectedId: id })
   if (archivedIds(get().items).has(id)) {
     setMode('archive')
     return archiveFocus(id)
   }
-  setMode('dump')
-  // Found by search but tucked away in Dump: show everything so it can be seen.
-  set({ selectedId: id, showPlanned: get().showPlanned || settled(get().items).has(id) })
+  // Somewhere else (another day, tucked away in Dump): open it here rather than switching screens.
+  sheetOpenFor([id], 'edit')
 }
 
 // ---------------------------------------------------------------- overlays + settings
@@ -1609,6 +1847,11 @@ export function closePalette() {
 
 export function toggleHelp() {
   set((s) => ({ helpOpen: !s.helpOpen, palette: { ...s.palette, open: false } }))
+}
+
+/** Help's two pages: how it works, and every key. */
+export function helpTab(tab: 'guide' | 'keys') {
+  set({ helpTab: tab })
 }
 
 export function cycleTheme() {

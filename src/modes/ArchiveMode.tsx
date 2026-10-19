@@ -1,9 +1,8 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { Kbd } from '../components/Kbd'
-import { RowEditor } from '../components/RowEditor'
 import { ParentRef, QuadrantTag, TimeTag } from '../components/Tags'
-import { addDays, longDate, todayKey } from '../lib/dates'
+import { addDays, longDate } from '../lib/dates'
 import { fmt, sumMinutes } from '../lib/duration'
 import { EXIT_FAST, keepFocus, SPRING } from '../lib/motion'
 import { archiveDays, resolveArchiveCursor } from '../lib/selectors'
@@ -24,8 +23,7 @@ export function ArchiveMode() {
   const items = useStore((s) => s.items)
   const cursor = useStore((s) => s.archiveCursor)
   const from = useStore((s) => s.archiveFrom)
-  const editing = useStore((s) => s.trayEditing)
-  const today = todayKey()
+  const today = useStore((s) => s.today)
 
   const days = useMemo(() => archiveDays(items), [items])
   const total = days.reduce((n, d) => n + d.items.length, 0)
@@ -69,12 +67,12 @@ export function ArchiveMode() {
           [x]
         </span>
         <span className="row__main">
-          {editing === item.id ? <RowEditor item={item} /> : <span className="row__text">{item.text}</span>}
+          <span className="row__text">{item.text}</span>
           <ParentRef item={item} className="parent-ref--row" />
         </span>
         <span className="row__meta">
-          <TimeTag item={item} />
           {item.quadrant && <QuadrantTag item={item} />}
+          <TimeTag item={item} />
           {item.doneAt !== null && <span className="tag tag--muted">{timeOf(item.doneAt)}</span>}
         </span>
       </motion.li>

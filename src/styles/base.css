@@ -164,6 +164,19 @@ input:focus-visible {
   border-color: color-mix(in srgb, var(--q-do) 40%, var(--line));
 }
 
+/* A tag you can click to change what it says. */
+button.tag {
+  cursor: pointer;
+  transition:
+    border-color 120ms,
+    color 120ms;
+}
+
+button.tag:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
 /* ------------------------------------------------------------------ buttons */
 
 .cta {

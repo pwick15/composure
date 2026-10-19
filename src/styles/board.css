@@ -29,6 +29,11 @@
   align-items: center;
   gap: 12px;
   width: min(680px, 100%);
+  min-height: 18px;
+}
+
+.tray__rail .progress {
+  min-width: 60px;
 }
 
 .tray__count {
@@ -53,7 +58,6 @@
 .tray__stage {
   position: relative;
   width: min(680px, 100%);
-  height: 136px;
 }
 
 .tray__peek {
@@ -68,8 +72,7 @@
 }
 
 .card {
-  position: absolute;
-  inset: 0;
+  position: relative;
   z-index: 3;
   background: var(--surface-2);
   border: 1px solid var(--line-strong);
@@ -83,8 +86,7 @@
 .card__inner {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  padding: 13px 16px 12px;
+  padding: 12px 16px 11px;
 }
 
 .card__top {
@@ -97,7 +99,7 @@
 .card__text,
 .card__input {
   flex: 1;
-  margin: 8px 0 6px;
+  margin: 7px 0 8px;
   font: 500 19px/1.35 var(--font-sans);
   letter-spacing: -0.012em;
   color: var(--text);
@@ -141,13 +143,14 @@
 
 /* ------------------------------------------------------------------ receipt */
 
+/* The last filing, beside the progress, with the way back. */
 .tray__receipt {
   position: relative;
   display: flex;
-  align-items: center;
-  width: min(680px, 100%);
-  height: 18px;
-  margin-top: -2px;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+  max-width: 62%;
+  min-width: 0;
 }
 
 .receipt {
@@ -193,6 +196,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 112px;
   border-style: dashed;
   background: color-mix(in srgb, var(--surface) 70%, transparent);
   box-shadow: none;
@@ -224,28 +228,14 @@
 
 /* ------------------------------------------------------------------ matrix */
 
+/* The quadrant headings say what each axis means, so the grid needs no axis labels. */
 .matrix {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: 20px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: var(--rows, minmax(0, 1fr) minmax(0, 1fr));
   gap: 8px;
-}
-
-.axis {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font: 600 10px/1 var(--font-mono);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-
-.axis--y {
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
 }
 
 .quad,
@@ -258,7 +248,6 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  cursor: pointer;
   transition:
     border-color 140ms,
     background-color 140ms,
@@ -311,6 +300,14 @@
   gap: 10px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  transition: background-color 140ms;
+}
+
+/* The heading is the drop target: clicking it files the card there. */
+.quad__head:hover,
+.day__head:hover {
+  background: color-mix(in srgb, var(--surface-2) 70%, var(--surface));
 }
 
 .quad__key.kbd {
@@ -348,6 +345,18 @@
   text-overflow: ellipsis;
 }
 
+.quad__titles h3,
+.day__titles h3 {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.quad__titles {
+  flex: 1;
+}
+
 .quad__keys {
   position: relative;
   flex: none;
@@ -366,6 +375,8 @@
 
 .quad__count,
 .day__count {
+  flex: none;
+  white-space: nowrap;
   margin-left: auto;
   min-width: 22px;
   height: 20px;
@@ -484,8 +495,21 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: var(--cols, repeat(8, minmax(0, 1fr)));
   gap: 8px;
+}
+
+/* Day columns are narrow: let a thought take three lines before it's cut. */
+.day .chip__text {
+  -webkit-line-clamp: 3;
+}
+
+.day__late {
+  flex: none;
+  margin: 0;
+  padding: 2px 4px 0;
+  font: 11px/1.3 var(--font-mono);
+  color: var(--q-do);
 }
 
 .day[data-weekend] {
@@ -528,6 +552,22 @@
   padding: 6px;
 }
 
+.day__session {
+  flex: none;
+  padding: 6px 4px 0;
+  overflow: hidden;
+  font: 600 10px/1.2 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+}
+
+.day__session:first-child {
+  padding-top: 0;
+}
+
 /* ------------------------------------------------------------------ responsive */
 
 @media (max-width: 1180px) {
@@ -542,8 +582,8 @@
     overflow-y: auto;
     padding: 14px 16px;
   }
-  .tray__stage {
-    height: 150px;
+  .quad__time {
+    display: none;
   }
   .matrix {
     flex: none;
@@ -551,7 +591,7 @@
     grid-template-rows: none;
     grid-auto-rows: minmax(200px, auto);
   }
-  .axis {
+  .tray__receipt {
     display: none;
   }
   .quad__titles span {

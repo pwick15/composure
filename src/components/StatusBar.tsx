@@ -1,5 +1,6 @@
-import { todayKey } from '../lib/dates'
 import { live, resolvePlanCursor, resolveSortCursor } from '../lib/selectors'
+import { toggleHelp } from '../state/actions'
+import { keepFocus } from '../lib/motion'
 import { useStore, type State } from '../state/store'
 import { Kbd } from './Kbd'
 
@@ -15,136 +16,53 @@ const h = (keys: string | string[], label: string, literal = false): Hint => ({
   literal,
 })
 
+/** The handful of keys that matter right now. Everything else is one ? away. */
 function hintsFor(s: State): Hint[] {
-  if (s.trayEditing) return [h('enter', 'save'), h('escape', 'cancel')]
+  if (s.sheet) {
+    if (s.sheet.row === 'text') return [h('enter', 'save'), h(['up', 'down'], 'row'), h('mod+k', 'done'), h('escape', 'close')]
+    if (s.sheet.query !== null) return [h(['up', 'down'], 'choose'), h('enter', 'set'), h('backspace', 'empty: numbers again'), h('escape', 'close')]
+    return [h('1–8', 'pick', true), h('0', 'clear'), h(['up', 'down'], 'row'), h('a–z', 'type a day', true), h(['-', '='], 'time'), h('escape', 'close')]
+  }
 
-  // Several picked (⇧↑/⇧↓): what the keys can do to all of them.
+  // Several picked (⇧↑/⇧↓): what the keys do to all of them.
   if (s.picked) {
-    const all = [h(['shift+up', 'shift+down'], 'pick more'), h('mod+k', 'done'), h('mod+s', 'when'), h(['-', '='], 'time')]
-    const rest = [h('mod+backspace', 'delete'), h('escape', 'just one')]
-    if (s.mode === 'today') return [...all, h(['shift+left', 'shift+right'], 'session'), h('t', 'not today'), ...rest]
-    if (s.mode === 'plan') return [h('1–7', 'day', true), h(['shift+left', 'shift+right'], 'day'), ...all, ...rest]
-    return [h(['q', 'w', 'a', 's'], 'file'), h(['shift+left', 'shift+right'], 'quadrant'), ...all, ...rest]
+    const all = [h('mod+e', 'open all'), h('mod+k', 'done'), h(['-', '='], 'time'), h('mod+backspace', 'delete'), h('escape', 'just one')]
+    if (s.mode === 'today') return [h('1–9', 'session', true), h('alt+t', 'not today'), ...all]
+    if (s.mode === 'plan') return [h('1–8', 'day', true), ...all]
+    if (s.mode === 'sort') return [h('1–4', 'file', true), ...all]
+    return all
   }
 
   if (s.mode === 'dump') {
     if (s.editing)
-      return [
-        h('enter', 'next'),
-        h(['tab', 'shift+tab'], 'nest'),
-        h('alt+enter', 'subtask'),
-        h('⇧ ⇧', 'done', true),
-        h(['up', 'down'], 'move'),
-        h('backspace', 'empty: step back'),
-      ]
-    if (s.dumpFinish)
-      return [
-        h('1–8', 'pick', true),
-        h(['left', 'right'], 'option'),
-        h('enter', 'pick'),
-        h(['up', 'down'], 'other field'),
-        h('escape', 'close'),
-      ]
+      return [h('enter', 'next'), h(['tab', 'shift+tab'], 'nest'), h('alt+enter', 'subtask'), h('⇧ ⇧', 'done', true), h('backspace', 'empty: step back')]
     if (s.selectedId)
-      return [
-        h('enter', 'edit'),
-        h('right', 'fill in'),
-        h('alt+enter', 'subtask'),
-        h(['tab', 'shift+tab'], 'nest'),
-        h('backspace', 'delete'),
-        h(['shift+up', 'shift+down'], 'reorder'),
-        h('mod+k', 'done'),
-        h('mod+s', 'when'),
-        h('escape', 'deselect'),
-      ]
-    return [
-      h('space', 'add'),
-      h(['up', 'down'], 'select'),
-      h('alt+right', 'next screen'),
-      h('mod+f', 'search'),
-      h('?', 'shortcuts'),
-    ]
+      return [h('enter', 'edit'), h('right', 'fill in'), h('mod+e', 'open'), h('alt+enter', 'subtask'), h('shift+down', 'pick several'), h('mod+k', 'done')]
+    return [h('space', 'add'), h(['up', 'down'], 'select'), h('a–z', 'search', true), h('alt+right', 'next screen')]
   }
 
   if (s.mode === 'today') {
     if (s.todayAdd)
       return s.todayAdd.cursor
-        ? [
-            h(['left', 'right'], 'option'),
-            h(['up', 'down'], 'row'),
-            h('enter', 'pick'),
-            h('shift+enter', 'add'),
-            h('backspace', 'back to text'),
-          ]
+        ? [h(['left', 'right'], 'option'), h(['up', 'down'], 'row'), h('enter', 'pick'), h('shift+enter', 'add'), h('backspace', 'back to text')]
         : [h('enter', 'add'), h('down', 'options'), h('⇧ ⇧', 'done', true), h('escape', 'close')]
-    if (s.run?.phase === 'over')
-      return [
-        h('mod+k', 'done'),
-        h(['-', '='], 'time needed'),
-        h('enter', 'carry on'),
-        h(['up', 'down'], 'move'),
-        h('f', 'stop'),
-      ]
-    if (s.run?.pause) return [h('enter', "I'm back"), h('i', "I'm back"), h('f', 'stop session')]
+    if (s.run?.phase === 'over') return [h('mod+k', 'done'), h(['-', '='], 'time needed'), h('alt+f', 'carry on'), h('escape', 'stop')]
+    if (s.run?.pause) return [h('enter', "I'm back")]
     if (s.pausing) return [h('1–4', 'bathroom · break · call · chore', true), h('enter', 'start typed'), h('escape', 'cancel')]
-    if (s.run)
-      return [
-        h('mod+k', 'done, next'),
-        h('i', 'interruption'),
-        h(['-', '='], 'more / less time'),
-        h(['up', 'down'], 'move'),
-        h('f', 'stop session'),
-      ]
-    return [
-      h('f', 'start session'),
-      h('n', 'add'),
-      h('e', 'edit'),
-      h(['up', 'down'], 'move'),
-      h(['alt+up', 'alt+down'], 'reorder'),
-      h(['shift+up', 'shift+down'], 'pick several'),
-      h('mod+k', 'done'),
-      h('mod+s', 'when'),
-      h(['shift+left', 'shift+right'], 'session'),
-      h(['-', '='], 'time'),
-      h('t', 'not today'),
-    ]
+    if (s.run) return [h('mod+k', 'done, next'), h('=', 'more time'), h('alt+p', 'something came up'), h('alt+f', 'stop')]
+    return [h('alt+f', 'start session'), h('space', 'add'), h('enter', 'open'), h('mod+k', 'done'), h('1–9', 'session', true), h('alt+t', 'not today')]
   }
 
-  if (s.mode === 'archive')
-    return [h('backspace', 'back'), h('mod+k', 'reopen'), h('mod+e', 'edit'), h('mod+backspace', 'delete'), h(['up', 'down'], 'move')]
+  if (s.mode === 'archive') return [h('backspace', 'back'), h('mod+k', 'reopen'), h('enter', 'open'), h('mod+backspace', 'delete')]
 
   if (s.mode === 'sort') {
-    if (!resolveSortCursor(s.items, s.decks.sort.cursor))
-      return [h('shift+3', 'plan'), h('backspace', 'back'), h(['up', 'down'], 'revisit'), h('mod+f', 'search')]
-    return [
-      h(['q', 'w', 'a', 's'], 'file'),
-      h('1–6', 'time', true),
-      h(['up', 'down'], 'move'),
-      h(['alt+up', 'alt+down'], 'reorder'),
-      h(['left', 'right'], 'quadrant'),
-      h('⇧ + arrows', 'move it', true),
-      h('backspace', 'back'),
-      h('e', 'edit'),
-      h('mod+s', 'when'),
-      h('mod+k', 'done'),
-    ]
+    if (!resolveSortCursor(s.items, s.decks.sort.cursor)) return [h('shift+3', 'plan'), h('backspace', 'back'), h(['up', 'down'], 'revisit')]
+    return [h('1–4', 'file', true), h('space', 'skip'), h('enter', 'open'), h('⌥1–6', 'time', true), h('backspace', 'back'), h('mod+k', 'done')]
   }
 
-  if (!resolvePlanCursor(s.items, s.decks.plan.cursor, todayKey()))
+  if (!resolvePlanCursor(s.items, s.decks.plan.cursor, s.today))
     return [h('mod+f', 'export: search "copy" or "calendar"'), h('backspace', 'back'), h(['up', 'down'], 'revisit')]
-  return [
-    h('1–7', 'day', true),
-    h('8', 'later'),
-    h('0', 'unplan'),
-    h(['-', '='], 'time'),
-    h(['up', 'down'], 'move'),
-    h(['alt+up', 'alt+down'], 'reorder'),
-    h(['left', 'right'], 'days'),
-    h('⇧ + arrows', 'move it', true),
-    h('backspace', 'back'),
-    h('mod+s', 'when'),
-    h('mod+k', 'done'),
-  ]
+  return [h('1–7', 'day', true), h('8', 'later'), h('space', 'skip'), h('enter', 'open'), h('backspace', 'back'), h('mod+k', 'done')]
 }
 
 const MODE_LABEL = { dump: 'DUMP', sort: 'SORT', plan: 'PLAN', today: 'TODAY', archive: 'ARCHIVE' }
@@ -165,6 +83,9 @@ export function StatusBar() {
             {hint.label}
           </span>
         ))}
+        <button type="button" className="hint hint--more" onMouseDown={keepFocus} onClick={toggleHelp}>
+          <Kbd k="?" size="xs" /> how it works
+        </button>
       </div>
       <div className="statusbar__right">
         <span>

@@ -2,9 +2,8 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { Kbd } from '../components/Kbd'
-import { RowEditor } from '../components/RowEditor'
 import { ParentRef, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
-import { isOverdue, longDate, todayKey } from '../lib/dates'
+import { isOverdue, longDate } from '../lib/dates'
 import { feedback } from '../keyboard/feedback'
 import { autosize } from '../lib/dom'
 import { DEFAULT_FOCUS, fmt } from '../lib/duration'
@@ -19,7 +18,7 @@ import {
   todaySessions,
 } from '../lib/selectors'
 import { PAUSE_PRESETS } from '../lib/interrupt'
-import { activeId, clock, effMinutes, leftovers, pauseLeftMs, remainingMs, taskClock, windowOf } from '../lib/session'
+import { activeId, clock, effMinutes, leftovers, pauseLeftMs, remainingMs, sessionNow, taskClock, windowOf } from '../lib/session'
 import { splitLines } from '../lib/text'
 import type { Item } from '../lib/types'
 import { useNow } from '../lib/useNow'
@@ -33,6 +32,10 @@ import {
   sessionCarryOn,
   sessionStart,
   sessionStop,
+  sessionName,
+  sessionRenameAt,
+  sessionRenameCancel,
+  sessionRenameSave,
   setMode,
   todayAddArrow,
   todayAddBackToText,
@@ -44,6 +47,7 @@ import {
   todayAddPick,
   todayAddQuadrant,
   todayFocus,
+  todayTick,
 } from '../state/actions'
 import { useStore } from '../state/store'
 
@@ -55,7 +59,7 @@ const clockTime = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: 'n
 /** What's left today and when you'd be done: an invitation to start while idle, a live countdown in a session. */
 function SessionSummary({ items, today }: { items: Item[]; today: string }) {
   const run = useStore((s) => s.run)
-  const now = useNow(run?.phase === 'running' ? 1000 : 30_000)
+  const now = sessionNow(run, useNow(run?.phase === 'running' ? 1000 : 30_000))
   const left = timeLeft(items, today)
   if (!left.open) return null
 
@@ -107,10 +111,10 @@ function SessionSummary({ items, today }: { items: Item[]; today: string }) {
 function SessionPanel({ items, today }: { items: Item[]; today: string }) {
   const run = useStore((s) => s.run)
   const pausing = useStore((s) => s.pausing)
-  const now = useNow(run?.phase === 'running' ? 1000 : null)
+  const now = sessionNow(run, useNow(run?.phase === 'running' ? 1000 : null))
   if (!run) return null
 
-  const name = `Session ${Math.max(1, todaySessions(items, today).findIndex((g) => g.session === run.session) + 1)}`
+  const name = sessionName(run.session)
   const open = new Set(openInSession(items, today, run.session).map((i) => i.id))
   const byId = new Map(items.map((i) => [i.id, i]))
 
@@ -125,14 +129,14 @@ function SessionPanel({ items, today }: { items: Item[]; today: string }) {
         <p className="session__lede">
           <b>{left.length}</b> not finished. Tick off what you did <Kbd k="mod+k" size="xs" />, give the rest the time they
           still need <Kbd k="-" size="xs" />
-          <Kbd k="=" size="xs" />, then carry on <Kbd k="enter" size="xs" />.
+          <Kbd k="=" size="xs" />, then carry on <Kbd k="alt+f" size="xs" />.
         </p>
         <div className="session__actions">
           <button className="cta cta--inline" onMouseDown={keepFocus} onClick={sessionCarryOn}>
-            Carry on <Kbd k="enter" size="xs" />
+            Carry on <Kbd k="alt+f" size="xs" />
           </button>
           <button className="cta cta--inline" onMouseDown={keepFocus} onClick={sessionStop}>
-            Stop <Kbd k="f" size="xs" />
+            Stop <Kbd k="escape" size="xs" />
           </button>
         </div>
       </section>
@@ -151,7 +155,7 @@ function SessionPanel({ items, today }: { items: Item[]; today: string }) {
   const { pause } = run
 
   if (pause) {
-    const away = now - pause.startedAt
+    const away = Math.max(0, now - pause.startedAt)
     const planned = pause.minutes === null ? null : pause.minutes * 60_000
     return (
       <section className="session" data-phase="running" data-paused aria-live="polite">
@@ -225,10 +229,10 @@ function SessionPanel({ items, today }: { items: Item[]; today: string }) {
           <Kbd k="=" size="xs" /> more time
         </span>
         <span>
-          <Kbd k="i" size="xs" /> interruption
+          <Kbd k="alt+p" size="xs" /> something came up
         </span>
         <span>
-          <Kbd k="f" size="xs" /> stop
+          <Kbd k="alt+f" size="xs" /> stop
         </span>
       </p>
       {pausing && <PauseLine />}
@@ -281,6 +285,42 @@ function PauseLine() {
         ))}
       </div>
     </div>
+  )
+}
+
+/** Typing a session's name in its heading: ↵ or clicking away keeps it, esc leaves it as it was. */
+function SessionNameInput({ session }: { session: number }) {
+  const ref = useRef<HTMLInputElement>(null)
+  const today = useStore((s) => s.today)
+  const current = useStore((s) => s.sessionNames[today]?.[session] ?? '')
+  useLayoutEffect(() => {
+    ref.current?.focus({ preventScroll: true })
+    ref.current?.select()
+  }, [])
+  return (
+    <input
+      ref={ref}
+      className="session-head__input"
+      defaultValue={current}
+      placeholder={`Session ${session}: morning, deep work, admin…`}
+      aria-label="Session name"
+      spellCheck={false}
+      autoComplete="off"
+      onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.nativeEvent.isComposing) return
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          feedback(e.nativeEvent, 'Named')
+          flushSync(() => sessionRenameSave(e.currentTarget.value))
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          feedback(e.nativeEvent, 'Cancel')
+          sessionRenameCancel()
+        }
+      }}
+      onBlur={(e) => sessionRenameSave(e.currentTarget.value)}
+    />
   )
 }
 
@@ -454,10 +494,12 @@ export function TodayMode() {
   const items = useStore((s) => s.items)
   const adding = useStore((s) => s.todayAdd !== null)
   const cursor = useStore((s) => s.todayCursor)
-  const editing = useStore((s) => s.trayEditing)
   const pickedIds = useStore((s) => s.picked?.ids)
   const run = useStore((s) => s.run)
-  const today = todayKey()
+  const renaming = useStore((s) => s.sessionRename)
+  // Read so a rename shows at once: names come from the store through sessionName().
+  useStore((s) => s.sessionNames)
+  const today = useStore((s) => s.today)
 
   const list = useMemo(() => todayList(items, today), [items, today])
   const currentId = resolveTodayCursor(items, cursor, today)
@@ -470,7 +512,7 @@ export function TodayMode() {
   const overtime = new Set(run && run.phase === 'running' ? run.queue.slice(0, run.index).filter(inList) : [])
   const leftSet = new Set(run?.phase === 'over' ? run.queue.filter(inList) : [])
 
-  const nodes = sessions.flatMap((group, g) => {
+  const nodes = sessions.flatMap((group) => {
     const running = run?.session === group.session
     const head = (
       <motion.li
@@ -482,7 +524,20 @@ export function TodayMode() {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0, transition: EXIT_FAST }}
       >
-        <span className="session-head__name">Session {g + 1}</span>
+        <Kbd k={String(group.session)} size="xs" className="session-head__key" />
+        {renaming?.session === group.session ? (
+          <SessionNameInput session={group.session} />
+        ) : (
+          <button
+            type="button"
+            className="session-head__name"
+            title="Name this session (⌥R)"
+            onMouseDown={keepFocus}
+            onClick={() => sessionRenameAt(today, group.session)}
+          >
+            {sessionName(group.session)}
+          </button>
+        )}
         <span className="session-head__meta">
           {group.items.length} open · {fmt(group.items.reduce((n, i) => n + effMinutes(i), 0))}
         </span>
@@ -509,19 +564,27 @@ export function TodayMode() {
           transition={SPRING}
           onClick={() => todayFocus(item.id)}
         >
-          <span className="row__index today-check" aria-hidden>
-            [ ]
-          </span>
+          <button
+            type="button"
+            className="row__index today-check"
+            aria-label={`Done: ${item.text}`}
+            title="Done (⌘K)"
+            onMouseDown={keepFocus}
+            onClick={(e) => {
+              e.stopPropagation()
+              todayTick(item.id)
+            }}
+          />
           <span className="row__main">
-            {editing === item.id ? <RowEditor item={item} /> : <span className="row__text">{item.text}</span>}
+            <span className="row__text">{item.text}</span>
             <ParentRef item={item} className="parent-ref--row" />
           </span>
           <span className="row__meta">
             {isActive && <span className="tag tag--focus">now</span>}
             {overtime.has(item.id) && <span className="tag tag--overdue">over time</span>}
-            <TimeTag item={item} />
-            {isOverdue(item.slot, today) && <SlotTag item={item} today={today} />}
-            {item.quadrant && <QuadrantTag item={item} />}
+            {item.quadrant && <QuadrantTag item={item} edit />}
+            {isOverdue(item.slot, today) && <SlotTag item={item} today={today} edit />}
+            <TimeTag item={item} edit />
           </span>
         </motion.li>
       )
@@ -529,12 +592,15 @@ export function TodayMode() {
     return [head, ...rows]
   })
 
-  useEffect(() => {
-    document.querySelector('.today-row[data-selected]')?.scrollIntoView({ block: 'nearest' })
-  }, [currentId])
-
   // While a session is running the current task fills the screen and everything else fades back.
   const focusing = run?.phase === 'running'
+
+  useEffect(() => {
+    // In the focus view the list is faded at the bottom; scrolling to its selected row would push
+    // the task on the clock off the top of the screen. Keep the screen at the top instead.
+    if (focusing) document.querySelector('.dump')?.scrollTo({ top: 0 })
+    else document.querySelector('.today-row[data-selected]')?.scrollIntoView({ block: 'nearest' })
+  }, [currentId, focusing])
 
   return (
     <div className="dump" data-focusing={focusing || undefined}>
@@ -562,7 +628,7 @@ export function TodayMode() {
             <span className="dump-empty__title">{allDone ? 'Everything for today is done.' : 'Nothing planned for today.'}</span>
             <span className="dump-empty__keys">
               <button className="cta cta--inline" onMouseDown={keepFocus} onClick={todayAddOpen}>
-                Add a task <Kbd k="n" size="xs" />
+                Add a task <Kbd k="space" size="xs" />
               </button>
               <button className="cta cta--inline" onMouseDown={keepFocus} onClick={() => setMode('plan')}>
                 Plan the week <Kbd k="shift+3" size="xs" />

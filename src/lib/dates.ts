@@ -85,10 +85,24 @@ export function slotLabel(slot: Slot, today: string): string {
   return short
 }
 
-export function weekdayShort(slot: Slot, today: string): string {
+/** Whole days from one day key to another (negative when `to` comes first). */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((parseDay(to).getTime() - parseDay(from).getTime()) / 86_400_000)
+}
+
+/** "1d late", "12d late": how long ago an overdue day was. */
+export function lateLabel(slot: string, today: string): string {
+  return `${daysBetween(slot, today)}d late`
+}
+
+/** A day as short as a chip can show it: "Today", "Thu", "24 Dec", "2d late", "Later". */
+export function shortDay(slot: Slot, today: string): string {
   if (slot === LATER) return 'Later'
+  if (slot < today) return lateLabel(slot, today)
   if (slot === today) return 'Today'
-  return WEEKDAY[parseDay(slot).getDay()]
+  if (slot === addDays(today, 1)) return 'Tomorrow'
+  const d = parseDay(slot)
+  return slot <= windowEnd(today) ? WEEKDAY[d.getDay()] : `${d.getDate()} ${MONTH[d.getMonth()]}`
 }
 
 export function longDate(key: string): string {

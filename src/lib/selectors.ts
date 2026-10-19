@@ -1,4 +1,4 @@
-import { columnFor, dayKey, isDateSlot, isOverdue, planColumns } from './dates'
+import { columnFor, dayKey, isDateSlot, isOverdue, LATER, planColumns } from './dates'
 import { effMinutes } from './session'
 import { QUADRANTS, QUADRANT_RANK } from './quadrants'
 import { childrenOf, leaves, parentIds } from './tree'
@@ -186,10 +186,12 @@ export function nextInQueue(queue: Item[], currentId: string): string | null {
   return null
 }
 
+/** A day's thoughts, session by session (the Later column holds many days, so no sessions there). */
 export function itemsInColumn(all: Item[], col: string, today: string): Item[] {
+  const bySession = (a: Item, b: Item) => (col === LATER ? 0 : a.session - b.session)
   return leaves(live(all))
     .filter((i) => isPlannable(i) && columnFor(i.slot, today) === col)
-    .sort((a, b) => byHand('plan')(a, b) || tackleOrder(a, b))
+    .sort((a, b) => bySession(a, b) || byHand('plan')(a, b) || tackleOrder(a, b))
 }
 
 // ---------------------------------------------------------------- today

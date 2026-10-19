@@ -2,7 +2,7 @@ import type { Quadrant } from './types'
 
 export interface QuadrantMeta {
   id: Quadrant
-  key: string
+  /** The key that files a thought here, in Sort and on the thought sheet. */
   num: string
   title: string
   blurb: string
@@ -11,12 +11,11 @@ export interface QuadrantMeta {
   col: 0 | 1
 }
 
-// Layout follows the classic Eisenhower grid: urgency across, importance down.
-// QWAS mirrors the grid on the keyboard: Q W on the top row, A S below.
+// Layout follows the classic Eisenhower grid: urgency across, importance down. The numbers read
+// the grid like a page, 1 2 on top and 3 4 below, and digits never start a search.
 export const QUADRANTS: QuadrantMeta[] = [
   {
     id: 'do',
-    key: 'q',
     num: '1',
     title: 'Do',
     blurb: 'Urgent · Important',
@@ -26,7 +25,6 @@ export const QUADRANTS: QuadrantMeta[] = [
   },
   {
     id: 'schedule',
-    key: 'w',
     num: '2',
     title: 'Schedule',
     blurb: 'Not urgent · Important',
@@ -36,7 +34,6 @@ export const QUADRANTS: QuadrantMeta[] = [
   },
   {
     id: 'delegate',
-    key: 'a',
     num: '3',
     title: "Someone else's",
     blurb: 'Urgent · Not important',
@@ -46,7 +43,6 @@ export const QUADRANTS: QuadrantMeta[] = [
   },
   {
     id: 'drop',
-    key: 's',
     num: '4',
     title: 'Let go',
     blurb: 'Not urgent · Not important',

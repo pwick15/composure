@@ -1,15 +1,13 @@
 import { AnimatePresence, motion, type Variants } from 'motion/react'
-import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
-import { feedback } from '../keyboard/feedback'
-import { autosize } from '../lib/dom'
+import type { CSSProperties, ReactNode } from 'react'
 import { SPRING } from '../lib/motion'
 import type { Item } from '../lib/types'
-import { trayCancel, trayCommit, truncate } from '../state/actions'
-import { getState, useStore, type TrayExit } from '../state/store'
+import { truncate } from '../state/actions'
+import { useStore, type TrayExit } from '../state/store'
 import { Kbd } from './Kbd'
 import { ParentRef } from './Tags'
 
-/** What the last filing key did, shown under the card with the way back. */
+/** What the last filing key did, shown beside the progress with the way back. */
 export interface Receipt {
   item: Item
   label: string
@@ -42,43 +40,8 @@ const variants: Variants = {
   }),
 }
 
-function TrayEditor({ item }: { item: Item }) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useLayoutEffect(() => {
-    const el = ref.current!
-    el.focus()
-    el.setSelectionRange(el.value.length, el.value.length)
-    autosize(el)
-  }, [])
-  return (
-    <textarea
-      ref={ref}
-      className="card__input"
-      defaultValue={item.text}
-      rows={1}
-      aria-label="Edit text"
-      onInput={(e) => autosize(e.currentTarget)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault()
-          feedback(e.nativeEvent, 'Saved')
-          trayCommit(item.id, e.currentTarget.value)
-        } else if (e.key === 'Escape') {
-          e.preventDefault()
-          feedback(e.nativeEvent, 'Cancel')
-          trayCancel()
-        }
-      }}
-      onBlur={(e) => {
-        if (getState().trayEditing === item.id) trayCommit(item.id, e.currentTarget.value)
-      }}
-    />
-  )
-}
-
 export function Tray({ label, done, total, current, ahead, tags, idle, empty, receipt }: TrayProps) {
   const exit = useStore((s) => s.trayExit)
-  const editing = useStore((s) => s.trayEditing)
   const pct = total ? (done / total) * 100 : 0
 
   return (
@@ -91,13 +54,36 @@ export function Tray({ label, done, total, current, ahead, tags, idle, empty, re
         <span className="tray__count">
           {done}/{total}
         </span>
+        <div className="tray__receipt" aria-live="polite">
+          <AnimatePresence mode="popLayout" initial={false}>
+            {receipt && (
+              <motion.span
+                key={`${receipt.item.id}:${receipt.label}`}
+                className="receipt"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4, transition: { duration: 0.1 } }}
+              >
+                <span className="receipt__text">"{truncate(receipt.item.text, 28)}"</span>
+                <span className="receipt__arrow">→</span>
+                <span className="receipt__dest" data-q={receipt.tone}>
+                  {receipt.label}
+                </span>
+                <span className="receipt__back">
+                  <Kbd k="backspace" size="xs" /> back
+                </span>
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
+      {/* The card sits in the flow, so the tray is as tall as the thought needs. */}
       <div className="tray__stage">
         {Array.from({ length: Math.min(ahead, 2) }, (_, i) => (
           <div key={i} className="tray__peek" style={{ '--i': i + 1 } as CSSProperties} />
         ))}
-        <AnimatePresence custom={exit} initial={false}>
+        <AnimatePresence custom={exit} initial={false} mode="popLayout">
           {current ? (
             <motion.article
               key={current.id}
@@ -113,21 +99,9 @@ export function Tray({ label, done, total, current, ahead, tags, idle, empty, re
                   {tags}
                   <ParentRef item={current} className="parent-ref--card" />
                 </div>
-                {editing === current.id ? (
-                  <TrayEditor item={current} />
-                ) : (
-                  <p className="card__text">
-                    {current.text}
-                  </p>
-                )}
+                <p className="card__text">{current.text}</p>
                 <div className="card__foot">
-                  {editing === current.id ? (
-                    <span className="card__idle">
-                      <Kbd k="enter" size="xs" /> save <Kbd k="escape" size="xs" /> cancel
-                    </span>
-                  ) : (
-                    <span className="card__idle">{idle}</span>
-                  )}
+                  <span className="card__idle">{idle}</span>
                 </div>
               </div>
             </motion.article>
@@ -141,29 +115,6 @@ export function Tray({ label, done, total, current, ahead, tags, idle, empty, re
             >
               {empty}
             </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      <div className="tray__receipt" aria-live="polite">
-        <AnimatePresence mode="popLayout" initial={false}>
-          {receipt && (
-            <motion.span
-              key={`${receipt.item.id}:${receipt.label}`}
-              className="receipt"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4, transition: { duration: 0.1 } }}
-            >
-              <span className="receipt__text">"{truncate(receipt.item.text, 40)}"</span>
-              <span className="receipt__arrow">→</span>
-              <span className="receipt__dest" data-q={receipt.tone}>
-                {receipt.label}
-              </span>
-              <span className="receipt__back">
-                <Kbd k="backspace" size="xs" /> back
-              </span>
-            </motion.span>
           )}
         </AnimatePresence>
       </div>

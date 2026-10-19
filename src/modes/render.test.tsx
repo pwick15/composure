@@ -6,7 +6,8 @@ import type { Item } from '../lib/types'
 import { getState, setState, useStore } from '../state/store'
 import { buildSections } from '../lib/palette'
 import { FocusPill } from '../components/FocusPill'
-import { WhenPicker } from '../components/WhenPicker'
+import { Help } from '../components/Help'
+import { ThoughtSheet } from '../components/ThoughtSheet'
 import { ArchiveMode } from './ArchiveMode'
 import { DumpMode } from './DumpMode'
 import { PlanMode } from './PlanMode'
@@ -70,28 +71,27 @@ describe('screens', () => {
     expect(render(<DumpMode />)).toContain('call mum')
   })
 
-  it('Dump opens the fill-in under the thought, with a numbered option for each choice', () => {
+  it('the thought sheet shows a row per field, a numbered option for each choice, and the text to edit', () => {
     load([{ ...base, id: 'a', text: 'call mum' }])
-    Object.assign(snapshot, { dumpFinish: { id: 'a', step: 'quadrant', col: 1 } })
-    setState({ dumpFinish: { id: 'a', step: 'quadrant', col: 1 } })
-    const html = render(<DumpMode />)
-    expect(html).toContain('priority')
-    expect(html.match(/class="attr"/g)).toHaveLength(4)
+    const sheet = { ids: ['a'], purpose: 'fill' as const, row: 'quadrant' as const, col: 1, query: null, receipt: null, nonce: 1 }
+    Object.assign(snapshot, { sheet })
+    setState({ sheet })
+    const html = render(<ThoughtSheet />)
+    for (const label of ['text', 'priority', 'day', 'time']) expect(html).toContain(`>${label}</button>`)
+    expect(html).toContain('call mum') // in the text box
+    expect(html.match(/class="attr"/g)).toHaveLength(4 + 8 + 6) // quadrants, days, times
     expect(html.match(/data-cursor="true"/g)).toHaveLength(1)
-    expect(html).toContain('also needs day and time')
+    expect(html).not.toContain('>session</button>') // no day yet, so no sessions to offer
   })
 
-  it('Today and the Archive swap a row for a text box while its text is being edited', () => {
+  it('a finished thought opens with only its text', () => {
     seed()
-    expect(render(<TodayMode />)).not.toContain('Edit text')
-    Object.assign(snapshot, { trayEditing: 'r' })
-    setState({ trayEditing: 'r', todayCursor: 'r' })
-    const html = render(<TodayMode />)
-    expect(html).toContain('aria-label="Edit text"')
-    expect(html).toContain('pay rent') // the text is in the box
-    Object.assign(snapshot, { trayEditing: 'h' })
-    setState({ trayEditing: 'h' })
-    expect(render(<ArchiveMode />)).toContain('aria-label="Edit text"')
+    const sheet = { ids: ['h'], purpose: 'edit' as const, row: 'text' as const, col: 0, query: null, receipt: null, nonce: 2 }
+    Object.assign(snapshot, { sheet })
+    setState({ sheet })
+    const html = render(<ThoughtSheet />)
+    expect(html).toContain('book hotel')
+    expect(html).not.toContain('>priority</button>')
   })
 
   it('Sort puts the subtasks in quadrants, not the parent, each pointing back at it', () => {
@@ -234,17 +234,21 @@ describe('screens', () => {
     expect(render(<FocusPill />).replaceAll('&#x27;', "'")).toContain("time's up")
   })
 
-  it('Today splits sessions under their own headings', () => {
+  it('Today splits sessions under their own headings, named when you named them', () => {
     seed()
     load(getState().items.map((i) => (i.id === 'r' ? { ...i, session: 2 } : i)))
+    Object.assign(snapshot, { sessionNames: { [today]: { 2: 'Admin' } } })
+    setState({ sessionNames: { [today]: { 2: 'Admin' } } })
     const html = render(<TodayMode />)
     expect(html).toContain('Session 1')
-    expect(html).toContain('Session 2')
-    expect(html.indexOf('Session 2')).toBeLessThan(html.indexOf('pay rent'))
+    expect(html).toContain('Admin')
+    expect(html.indexOf('Admin')).toBeLessThan(html.indexOf('pay rent'))
     expect(html.indexOf('pay rent')).toBeGreaterThan(html.indexOf('book flights'))
+    // Plan's column for the day shows the same sessions.
+    expect(render(<PlanMode />)).toContain('class="day__session"')
   })
 
-  it('a finished task goes straight to the Archive, never tagged Overdue', () => {
+  it('a finished task goes straight to the Archive, never tagged late', () => {
     const yesterday = addDays(today, -1)
     const stamp = (day: string) => new Date(`${day}T09:00:00`).getTime()
     load([
@@ -255,7 +259,7 @@ describe('screens', () => {
     const dump = render(<DumpMode />)
     expect(dump).not.toContain('late but done')
     expect(dump).not.toContain('done last week')
-    expect(dump.match(/Overdue/g)).toHaveLength(1) // only the one that is really late
+    expect(dump.match(/1d late/g)).toHaveLength(1) // only the one that is really late
     const todayHtml = render(<TodayMode />)
     expect(todayHtml).toContain('still late')
     expect(todayHtml).not.toContain('late but done')
@@ -263,7 +267,23 @@ describe('screens', () => {
     const archive = render(<ArchiveMode />)
     expect(archive).toContain('done last week')
     expect(archive).toContain('late but done')
-    expect(archive).not.toContain('Overdue')
+    expect(archive).not.toContain('late<')
+  })
+
+  it('? explains the core features in the order you use them, and keeps every key a tab away', () => {
+    Object.assign(snapshot, { helpOpen: true, helpTab: 'guide' })
+    setState({ helpOpen: true, helpTab: 'guide' })
+    const guide = render(<Help />).replaceAll('&#x27;', "'")
+    const order = ['Empty your head', 'Decide what matters', 'Give it a day', 'Do one thing at a time']
+    const at = order.map((t) => guide.indexOf(t))
+    expect(at).not.toContain(-1)
+    expect(at).toEqual([...at].sort((x, y) => x - y))
+    for (const t of ['Change anything, from anywhere', 'Work through a session', 'Nothing gets lost']) expect(guide).toContain(t)
+    Object.assign(snapshot, { helpTab: 'keys' })
+    setState({ helpTab: 'keys' })
+    const keys = render(<Help />)
+    expect(keys).toContain('Every key')
+    expect(keys).toContain('File under Do')
   })
 
   it('searching "archive" puts Open archive first, from every screen', () => {
@@ -275,12 +295,20 @@ describe('screens', () => {
     }
   })
 
-  it('the When picker shows the thought and the usual picks', () => {
-    const when = { ids: ['a'], text: 'call dentist', current: null }
-    Object.assign(snapshot, { when })
-    setState({ when })
-    const html = render(<WhenPicker />)
+  it('search puts a thought that contains the words above a command that only matches scattered letters', () => {
+    const sections = buildSections('jap', 'dump', [{ ...base, id: 'j', text: 'Plan the Japan trip' }])
+    expect(sections[0].title).toBe('Thoughts')
+    expect(sections.flatMap((s) => s.rows).some((r) => r.kind === 'command' && r.cmd.id === 'data.import')).toBe(false)
+  })
+
+  it('⌘S opens the day ready to type, with the usual picks', () => {
+    load([{ ...base, id: 'a', text: 'call dentist' }])
+    const sheet = { ids: ['a'], purpose: 'field' as const, row: 'slot' as const, col: 0, query: '', receipt: null, nonce: 3 }
+    Object.assign(snapshot, { sheet })
+    setState({ sheet })
+    const html = render(<ThoughtSheet />)
     expect(html).toContain('call dentist')
+    expect(html).toContain('aria-label="Day"')
     for (const pick of ['Today', 'Tomorrow', 'Later']) expect(html).toContain(pick)
     expect(html).not.toContain('No day') // nothing to clear yet
   })

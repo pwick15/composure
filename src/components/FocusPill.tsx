@@ -1,8 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { todayKey } from '../lib/dates'
 import { keepFocus, SNAP } from '../lib/motion'
 import { openInSession } from '../lib/selectors'
-import { activeId, clock, leftovers, remainingMs, taskClock, windowOf } from '../lib/session'
+import { activeId, clock, leftovers, remainingMs, sessionNow, taskClock, windowOf } from '../lib/session'
 import { useNow } from '../lib/useNow'
 import { sessionStop, setMode, truncate } from '../state/actions'
 import { useStore } from '../state/store'
@@ -11,9 +10,9 @@ import { useStore } from '../state/store'
 export function FocusPill() {
   const run = useStore((s) => s.run)
   const items = useStore((s) => s.items)
-  const now = useNow(run?.phase === 'running' ? 1000 : null)
+  const now = sessionNow(run, useNow(run?.phase === 'running' ? 1000 : null))
 
-  const today = todayKey()
+  const today = useStore((s) => s.today)
   const open = new Set(run ? openInSession(items, today, run.session).map((i) => i.id) : [])
   const win = run ? windowOf(run, items) : null
   const t = run ? taskClock(run, now) : now

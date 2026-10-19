@@ -2,7 +2,6 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { pulse } from '../keyboard/feedback'
 import { comboId, eventCombo, isMac } from '../keyboard/keys'
-import { todayKey } from '../lib/dates'
 import { SNAP } from '../lib/motion'
 import { buildSections, type Row } from '../lib/palette'
 import { addItems, closePalette, jumpTo, toast, truncate } from '../state/actions'
@@ -52,7 +51,7 @@ function Palette() {
   const [active, setActive] = useState(0)
   const input = useRef<HTMLInputElement>(null)
   const list = useRef<HTMLDivElement>(null)
-  const today = todayKey()
+  const today = useStore((s) => s.today)
 
   useLayoutEffect(() => {
     const el = input.current!
@@ -180,7 +179,12 @@ function Palette() {
                           <Highlight text={row.item.text} indices={row.indices} />
                         </span>
                         <span className="prow__keys">
-                          <QuadrantTag item={row.item} />
+                          {/* A parent is a label for its subtasks: it never gets a priority of its own. */}
+                          {items.some((i) => i.parentId === row.item.id) ? (
+                            <span className="tag tag--muted">{items.filter((i) => i.parentId === row.item.id).length} subtasks</span>
+                          ) : (
+                            <QuadrantTag item={row.item} />
+                          )}
                           <SlotTag item={row.item} today={today} />
                         </span>
                       </>
@@ -215,7 +219,7 @@ function Palette() {
             <Kbd k="mod+enter" size="xs" /> add as thought
           </span>
           <span className="palette__foot-right">
-            <Kbd k="?" size="xs" /> all shortcuts
+            <Kbd k="?" size="xs" /> how it works
           </span>
         </div>
       </motion.div>

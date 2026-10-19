@@ -35,6 +35,14 @@ export interface Run {
 /** The clock the tasks run on: frozen at the moment a pause began, so none of their time is lost to it. */
 export const taskClock = (run: Run, now: number) => (run.pause ? run.pause.startedAt : now)
 
+/**
+ * `now` as a display should read it: never before the current window or pause began. A clock that
+ * ticks once a second can lag behind a window that just opened, and would show more time left than
+ * the window has ("15:01 of 15m").
+ */
+export const sessionNow = (run: Run | null, now: number) =>
+  run ? Math.max(now, run.startedAt, run.pause?.startedAt ?? 0) : now
+
 /** How much of a timed pause is still to go. */
 export const pauseLeftMs = (pause: Pause, now: number) =>
   pause.minutes === null ? 0 : Math.max(0, pause.startedAt + pause.minutes * MINUTE - now)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { iconLabel } from './favicon'
-import { advance, clock, effMinutes, leftovers, remainingMs, startRun, type Run } from './session'
+import { advance, clock, effMinutes, leftovers, remainingMs, sessionNow, startRun, type Run } from './session'
 import type { Item } from './types'
 
 const MIN = 60_000
@@ -24,6 +24,14 @@ const all = new Set(['a', 'b', 'c'])
 const fresh = () => startRun(1, items, T0) as Run
 
 describe('work session timing', () => {
+  it('a clock that lags behind a window or pause that just began reads as its start, never before it', () => {
+    const run = fresh()
+    expect(sessionNow(run, T0 - 900)).toBe(T0) // "15:01 of 15m" was this
+    expect(sessionNow({ ...run, pause: { label: 'Break', startedAt: T0 + MIN, minutes: 10 } }, T0 + 30_000)).toBe(T0 + MIN)
+    expect(sessionNow(run, T0 + MIN)).toBe(T0 + MIN)
+    expect(sessionNow(null, 5)).toBe(5)
+  })
+
   it('starts on the first task, and has nothing to start without tasks', () => {
     expect(fresh()).toMatchObject({ queue: ['a', 'b', 'c'], index: 0, startedAt: T0, phase: 'running' })
     expect(startRun(1, [], T0)).toBeNull()

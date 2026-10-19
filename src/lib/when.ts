@@ -1,4 +1,4 @@
-import { addDays, dayKey, LATER, longDate, parseDay } from './dates'
+import { addDays, dayKey, daysBetween, LATER, longDate, parseDay } from './dates'
 import type { Slot } from './types'
 
 // "When" understands the way people say a day: "tue", "next friday", "in 2 weeks", "3d", "24/12",
@@ -27,7 +27,6 @@ const NUMBER_WORDS = 'a an one two three four five six seven eight nine ten elev
 const MAX_DAYS = 3650
 
 const dayOfWeek = (key: string) => parseDay(key).getDay()
-const daysBetween = (from: string, to: string) => Math.round((parseDay(to).getTime() - parseDay(from).getTime()) / 86_400_000)
 
 /** The next given weekday (0 = Sunday), always after `from`: asking for Tuesday on a Tuesday means next week's. */
 const upcoming = (from: string, weekday: number) => addDays(from, ((weekday - dayOfWeek(from) + 6) % 7) + 1)

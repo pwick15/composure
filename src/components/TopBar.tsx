@@ -1,8 +1,7 @@
 import { motion } from 'motion/react'
 import { useMemo } from 'react'
-import { todayKey } from '../lib/dates'
 import { keepFocus, SNAP } from '../lib/motion'
-import { live, planQueue, todayList, todayProgress } from '../lib/selectors'
+import { live, planQueue, todayList, todayProgress, visibleInDump } from '../lib/selectors'
 import { leaves } from '../lib/tree'
 import type { Mode } from '../lib/types'
 import { openPalette, setMode, toggleHelp } from '../state/actions'
@@ -21,20 +20,23 @@ const TABS: { mode: Mode; label: string; key: string }[] = [
 export function TopBar() {
   const mode = useStore((s) => s.mode)
   const items = useStore((s) => s.items)
+  const showPlanned = useStore((s) => s.showPlanned)
+  const key = useStore((s) => s.today)
 
   const counts = useMemo(() => {
-    const key = todayKey()
     const kept = live(items)
+    // Dump counts what it lists, so the number matches the rows you see.
+    const shown = visibleInDump(items, showPlanned).length
     const unsorted = leaves(kept).filter((i) => !i.quadrant).length
     const unplanned = planQueue(items, key).length
     const today = todayList(items, key)
     return {
-      dump: kept.length ? String(kept.length) : '',
+      dump: shown ? String(shown) : '',
       sort: kept.length ? (unsorted ? `${unsorted} left` : '✓') : '',
       plan: kept.length ? (unplanned ? `${unplanned} left` : '✓') : '',
       today: today.length ? `${today.length} left` : todayProgress(items, key).done ? '✓' : '',
     }
-  }, [items])
+  }, [items, showPlanned, key])
 
   return (
     <header className="topbar">
@@ -75,7 +77,7 @@ export function TopBar() {
           <span className="ghost-btn__label">Search</span>
           <Kbd k="mod+f" size="xs" />
         </button>
-        <button className="ghost-btn ghost-btn--icon" onMouseDown={keepFocus} onClick={toggleHelp} aria-label="Keyboard shortcuts">
+        <button className="ghost-btn ghost-btn--icon" onMouseDown={keepFocus} onClick={toggleHelp} aria-label="How it works, and every key" title="How it works (?)">
           <Kbd k="?" size="xs" />
         </button>
       </div>

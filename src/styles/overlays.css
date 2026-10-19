@@ -250,33 +250,362 @@
   color: var(--text-2);
 }
 
-/* ------------------------------------------------------------------ when */
+/* ------------------------------------------------------------------ help: how it works */
 
-.when__task {
-  flex: none;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 12px 14px 0;
-  min-width: 0;
+.help {
+  width: min(1060px, 100%);
+  max-height: min(820px, 88vh);
 }
 
-.when__text {
+.help .sheet__head {
+  align-items: center;
+}
+
+.help__tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.help__tab {
+  white-space: nowrap;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.help__tab[data-active] {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.help__switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 0 4px 0 6px;
+}
+
+.guide__lede {
+  margin: -4px 0 16px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.guide__flow,
+.guide__more {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide__flow {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.guide__more {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.guide__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+/* The four screens read left to right, in the order you use them. */
+.guide__flow .guide__card:not(:last-child)::after {
+  content: '→';
+  position: absolute;
+  top: 14px;
+  right: -9px;
+  z-index: 1;
+  font: 600 12px/1 var(--font-mono);
+  color: var(--accent-fg);
+}
+
+.guide__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.guide__name {
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-fg);
+}
+
+.guide__go {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.guide__title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.guide__card p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.guide__card p .kbd {
+  margin: 0 1px;
+}
+
+.guide__rule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 16px 0 14px;
+  font: 12px/1.5 var(--font-mono);
+  color: var(--text-3);
+}
+
+@media (max-width: 900px) {
+  .guide__flow,
+  .guide__more {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .guide__flow .guide__card::after {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .guide__flow,
+  .guide__more {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .help .sheet__head {
+    flex-wrap: wrap;
+  }
+  .help__tabs {
+    order: 3;
+    margin-left: 0;
+  }
+  .help__switch {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ thought sheet */
+
+.tsheet {
+  width: min(720px, 100%);
+  max-height: min(640px, 84vh);
+  outline: none;
+}
+
+.tsheet__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tsheet__head > .kbd {
+  margin-left: auto;
+}
+
+.tsheet__context {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  font: 11px/1.4 var(--font-mono);
+  color: var(--text-3);
+}
+
+.tsheet__rows {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.tsheet__row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 8px 14px;
+}
+
+.tsheet__row[data-active] {
+  background: color-mix(in srgb, var(--surface-2) 70%, var(--surface));
+}
+
+.tsheet__row[data-active]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.tsheet__label {
+  padding: 6px 0 0;
+  border: 0;
+  background: none;
+  font: 11px/1 var(--font-mono);
+  color: var(--text-3);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tsheet__row[data-active] .tsheet__label {
+  color: var(--accent-fg);
+}
+
+.tsheet__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tsheet__value {
+  padding: 6px 0 0;
+  border: 0;
+  background: none;
+  font: 11px/1 var(--font-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+button.tsheet__value {
+  cursor: pointer;
+}
+
+button.tsheet__value:hover {
+  color: var(--accent-fg);
+}
+
+.tsheet__text {
+  width: 100%;
+  padding: 1px 0;
+  border: 0;
+  background: transparent;
+  resize: none;
+  overflow: hidden;
+  font: 500 17px/1.35 var(--font-sans);
+  color: var(--text);
+  caret-color: var(--accent-fg);
+  outline: none;
+}
+
+.tsheet__typed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.tsheet__input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--accent-fg);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+  font: 14px var(--font-sans);
+  color: var(--text);
+  caret-color: var(--accent-fg);
+  outline: none;
+}
+
+.tsheet__input::placeholder {
+  color: var(--text-3);
+}
+
+.tsheet__readings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tsheet__none {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.tsheet__receipt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--text-2);
 }
 
-.prow__hint {
-  flex: none;
-  font: 12px var(--font-mono);
+.attr__hint {
+  margin-left: 2px;
+  font-weight: 400;
   color: var(--text-3);
 }
 
-.when__none {
-  padding: 18px 10px;
-  color: var(--text-3);
-  font-size: 13px;
+/* On a phone the sheet comes up from the bottom, where a thumb can reach it. */
+@media (max-width: 720px) {
+  .overlay:has(.tsheet) {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .tsheet {
+    width: 100%;
+    max-height: 88dvh;
+    border-radius: 14px 14px 0 0;
+  }
+  .tsheet__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 8px;
+  }
+  .tsheet__label,
+  .tsheet__value {
+    grid-row: 1;
+    padding: 0;
+  }
+  .tsheet__value {
+    grid-column: 2;
+  }
+  .tsheet__body {
+    grid-column: 1 / -1;
+  }
 }

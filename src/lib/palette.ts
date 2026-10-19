@@ -1,5 +1,5 @@
-import { COMMANDS, GROUP_ORDER, titleOf, type Command } from '../keyboard/commands'
-import { fuzzyBest, fuzzyMatch } from './fuzzy'
+import { COMMANDS, GROUP_ORDER, inScope, titleOf, type Command } from '../keyboard/commands'
+import { fuzzyBest, fuzzyMatch, SUBSTRING } from './fuzzy'
 import { archivedIds } from './selectors'
 import { leaves } from './tree'
 import type { Item, Mode } from './types'
@@ -17,7 +17,7 @@ export interface Section {
 const SECTION_FOR_MODE: Record<Mode, string> = { dump: 'Dump', sort: 'Sort', plan: 'Plan', today: 'Today', archive: 'Archive' }
 
 function available(mode: Mode) {
-  return COMMANDS.filter((c) => c.palette !== false && (!c.scope || c.scope === mode))
+  return COMMANDS.filter((c) => c.palette !== false && inScope(c, mode))
 }
 
 export function buildSections(query: string, mode: Mode, items: Item[]): Section[] {
@@ -67,8 +67,11 @@ export function buildSections(query: string, mode: Mode, items: Item[]): Section
 
   const create: Section = { title: 'New', rows: [{ kind: 'create', text: q }] }
   const sections: Section[] = []
-  if (commandRows.length) sections.push({ title: 'Commands', rows: commandRows.map((r) => r.row) })
-  if (itemRows.length) sections.push({ title: 'Thoughts', rows: itemRows.map((r) => r.row) })
+  const commands: Section | null = commandRows.length ? { title: 'Commands', rows: commandRows.map((r) => r.row) } : null
+  const thoughts: Section | null = itemRows.length ? { title: 'Thoughts', rows: itemRows.map((r) => r.row) } : null
+  // Commands come first, unless a thought contains the query word for word and no command does.
+  const thoughtsFirst = (itemRows[0]?.score ?? 0) >= SUBSTRING && (commandRows[0]?.score ?? 0) < SUBSTRING
+  for (const s of thoughtsFirst ? [thoughts, commands] : [commands, thoughts]) if (s) sections.push(s)
   if (archiveRows.length) sections.push({ title: 'Archive', rows: archiveRows.map((r) => r.row) })
   // Weak or no matches: adding the text as a thought is the likely intent.
   const best = Math.max(commandRows[0]?.score ?? -Infinity, itemRows[0]?.score ?? -Infinity)

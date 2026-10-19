@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { flushSync } from 'react-dom'
 import { splitLines } from '../lib/text'
-import { openPalette, pasteLines, toggleHelp } from '../state/actions'
+import { helpTab, openPalette, pasteLines, toggleHelp } from '../state/actions'
 import { importFile } from '../state/exporters'
 import { getState } from '../state/store'
 import { findCommand, hudOf } from './commands'
@@ -15,14 +15,19 @@ function onKeyDown(e: KeyboardEvent) {
   if (MODIFIER_KEYS.has(e.key)) return
 
   const s = getState()
-  // The palette input owns the keyboard while it is open.
-  if (s.palette.open || s.when) return
+  // Search and the thought sheet own the keyboard while they are open.
+  if (s.palette.open || s.sheet) return
 
   if (s.helpOpen) {
     if (e.key === 'Escape' || e.key === '?') {
       e.preventDefault()
       feedback(e, 'Close')
       toggleHelp()
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Tab') {
+      e.preventDefault()
+      const tab = s.helpTab === 'guide' ? 'keys' : 'guide'
+      feedback(e, tab === 'guide' ? 'How it works' : 'Keys')
+      helpTab(tab)
     }
     return
   }

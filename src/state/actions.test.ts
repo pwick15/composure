@@ -466,7 +466,7 @@ describe('time estimates', () => {
     a.setMode('today')
   }
 
-  it('1–6 in Sort sets the time and leaves the card where it is', () => {
+  it('⌥1–⌥6 in Sort set the time and leave the card where it is', () => {
     dump('a', 'b')
     a.setMode('sort')
     a.estimatePreset(3)
@@ -495,11 +495,21 @@ describe('time estimates', () => {
     expect(minutesOf('a')).toBe(10)
   })
 
-  it('does nothing in Dump, and says why', () => {
+  it('works in Dump too, on the selected thought, and a parent gives it to its open subtasks', () => {
     dump('a')
+    setState({ selectedId: null })
     a.estimateStep(1)
-    expect(minutesOf('a')).toBeNull()
-    expect(getState().toasts.at(-1)?.text).toMatch(/Sort, Plan and Today/)
+    expect(minutesOf('a')).toBeNull() // nothing selected
+    expect(getState().toasts.at(-1)?.text).toMatch(/Select a thought/)
+    setState({ selectedId: getState().items[0].id })
+    a.estimateStep(1)
+    expect(minutesOf('a')).toBe(15)
+
+    dump('trip', 'flights', 'hotel')
+    const trip = getState().items.find((i) => i.text === 'trip')!
+    setState({ items: getState().items.map((i) => (i.text === 'flights' || i.text === 'hotel' ? { ...i, parentId: trip.id } : i)), selectedId: trip.id })
+    a.estimatePreset(4)
+    expect([minutesOf('trip'), minutesOf('flights'), minutesOf('hotel')]).toEqual([null, 60, 60])
   })
 
   it('Today lists quickest first inside a quadrant, and re-sorts when an estimate changes', () => {
@@ -851,12 +861,51 @@ describe('work sessions', () => {
     expect(getState().run!.phase).toBe('over')
   })
 
+  it('⌘Z after ticking the active task off puts it back on the clock with the time it had left', () => {
+    day(['a', 20], ['b', 30])
+    a.sessionStart()
+    passMinutes(5)
+    a.todayToggle()
+    expect(activeText()).toBe('b')
+    passMinutes(1)
+    a.undo()
+    expect(done('a')).toBe(false)
+    expect(activeText()).toBe('a')
+    const run = getState().run!
+    expect(run.startedAt + 20 * MIN - Date.now()).toBe(15 * MIN) // what it had left when it was ticked
+    passMinutes(15)
+    expect(activeText()).toBe('b')
+  })
+
   it('catches up after the tab slept through several windows', () => {
     day(['a', 10], ['b', 10], ['c', 10])
     a.sessionStart()
     passMinutes(25)
     expect(activeText()).toBe('c')
     expect(getState().run!.startedAt).toBe(T0 + 20 * MIN)
+  })
+
+  it('⌥F carries on once time is up, and esc (sessionStop) ends it there', () => {
+    day(['a', 10])
+    a.sessionToggle()
+    passMinutes(11)
+    expect(getState().run?.phase).toBe('over')
+    a.sessionToggle()
+    expect(getState().run).toMatchObject({ phase: 'running', startedAt: Date.now() })
+    passMinutes(11)
+    a.sessionStop()
+    expect(getState().run).toBeNull()
+  })
+
+  it('1–9 move the selected task to that session; one past the last starts a new one, further does nothing', () => {
+    day(['a', 10], ['b', 10])
+    a.todayFocus(getState().items.find((i) => i.text === 'b')!.id)
+    a.todayToSession(2)
+    expect(todaySessions(getState().items, todayKey()).map((g) => g.session)).toEqual([1, 2])
+    a.todayToSession(4)
+    expect(getState().items.find((i) => i.text === 'b')!.session).toBe(2)
+    expect(getState().toasts.at(-1)?.text).toContain('Session 3 starts a new one')
+    expect(a.todayCurrent()?.text).toBe('b') // the selection stays on what moved
   })
 
   it('when time is up the unfinished tasks wait for you; more time and ↵ carry on', () => {
@@ -961,6 +1010,41 @@ describe('work sessions', () => {
     a.todayAddOpen()
     a.todayAddEnter('new one')
     expect(getState().items.find((i) => i.text === 'new one')!.session).toBe(2)
+  })
+})
+
+describe('naming sessions', () => {
+  const task = (text: string) => getState().items.find((i) => i.text === text)!
+
+  it('a session keeps its name and number all day; an empty name goes back to "Session 2"', () => {
+    dump('a', 'b')
+    setState({ items: getState().items.map((i) => ({ ...i, slot: todayKey(), session: i.text === 'b' ? 2 : 1 })) })
+    a.setMode('today')
+    a.todayFocus(task('b').id)
+    a.sessionRenameOpen()
+    expect(getState().sessionRename).toEqual({ day: todayKey(), session: 2 })
+    a.sessionRenameSave('  Deep work ')
+    expect(a.sessionName(2)).toBe('Deep work')
+    expect(a.sessionName(1)).toBe('Session 1')
+    a.toggleDone(task('a').id) // the first session empties; the second keeps its name and number
+    expect(todaySessions(getState().items, todayKey()).map((g) => a.sessionName(g.session))).toEqual(['Deep work'])
+    a.sessionRenameAt(todayKey(), 2)
+    a.sessionRenameSave('')
+    expect(a.sessionName(2)).toBe('Session 2')
+  })
+
+  it('the thought sheet offers sessions by name, and names from past days are let go', () => {
+    dump('a')
+    setState({
+      items: getState().items.map((i) => ({ ...i, slot: todayKey() })),
+      sessionNames: { [addDays(todayKey(), -3)]: { 1: 'Old' } },
+      selectedId: task('a').id,
+    })
+    a.sessionRenameAt(todayKey(), 1)
+    a.sessionRenameSave('Morning')
+    expect(Object.keys(getState().sessionNames)).toEqual([todayKey()])
+    a.editCurrent()
+    expect(a.sheetOptions(getState().sheet!, 'session').map((o) => o.label)).toEqual(['Morning', 'new'])
   })
 })
 
@@ -1080,36 +1164,39 @@ describe('the same keys on every screen', () => {
   })
 })
 
-describe('when', () => {
+describe('when (⌘S)', () => {
   const task = (text: string) => getState().items.find((i) => i.text === text)!
+  /** Picks a day on the sheet's day row, as clicking a reading does. */
+  const giveDay = (slot: string | null) => a.sheetChoose('slot', { n: 0, label: String(slot), hint: '', change: { slot } })
 
-  it('⌘S then a phrase gives the selected thought that day, and ⌘Z undoes it', () => {
+  it('opens the sheet on the day, ready to type; a reading gives the thought that day, and ⌘Z undoes it', () => {
     dump('a', 'b')
     setState({ selectedId: task('a').id })
     a.whenOpen()
-    expect(getState().when).toMatchObject({ text: 'a' })
-    a.whenApply(addDays(todayKey(), 3))
-    expect(getState().when).toBeNull()
+    expect(getState().sheet).toMatchObject({ ids: [task('a').id], row: 'slot', query: '', purpose: 'field' })
+    a.sheetType('in 3 days')
+    a.sheetEnter()
+    expect(getState().sheet).toBeNull()
     expect(task('a').slot).toBe(addDays(todayKey(), 3))
-    expect(getState().toasts.at(-1)?.text).toContain('a')
+    expect(getState().toasts.at(-1)?.text).toContain('"a"')
     a.undo()
     expect(task('a').slot).toBeNull()
   })
 
-  it('gives a thought with subtasks\' open subtasks the day too', () => {
+  it("gives a thought with subtasks' open subtasks the day too", () => {
     dump('trip', 'flights', 'hotel')
     setState({ items: getState().items.map((i) => (i.text === 'trip' ? i : { ...i, parentId: task('trip').id })) })
     setState({ selectedId: task('trip').id })
     a.whenOpen()
-    a.whenApply(todayKey())
-    expect(getState().items.map((i) => i.slot)).toEqual([todayKey(), todayKey(), todayKey()])
+    giveDay(todayKey())
+    expect(getState().items.map((i) => i.slot)).toEqual([null, todayKey(), todayKey()])
   })
 
   it('in Plan it files the card and moves on, like 1–8', () => {
     dump('a', 'b')
     a.setMode('plan')
     a.whenOpen()
-    a.whenApply(addDays(todayKey(), 2))
+    giveDay(addDays(todayKey(), 2))
     expect(task('a').slot).toBe(addDays(todayKey(), 2))
     expect(a.planCurrent()?.text).toBe('b')
   })
@@ -1120,30 +1207,31 @@ describe('when', () => {
     a.setMode('today')
     a.todayFocus(task('a').id)
     a.whenOpen()
-    a.whenApply(addDays(todayKey(), 1))
+    giveDay(addDays(todayKey(), 1))
     expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['b'])
     expect(getState().todayCursor).toBe(task('b').id)
   })
 
-  it('"no day" clears it', () => {
+  it('"none" clears it', () => {
     dump('a')
     setState({ items: getState().items.map((i) => ({ ...i, slot: todayKey() })), selectedId: task('a').id })
     a.whenOpen()
-    a.whenApply(null)
+    a.sheetType('none')
+    a.sheetEnter()
     expect(task('a').slot).toBeNull()
   })
 
   it('has nothing to do without a selection, in the Archive, or while a line is being typed', () => {
     a.whenOpen()
-    expect(getState().when).toBeNull()
+    expect(getState().sheet).toBeNull()
     dump('a')
     a.setMode('archive')
     a.whenOpen()
-    expect(getState().when).toBeNull()
+    expect(getState().sheet).toBeNull()
     a.setMode('today')
     a.todayAddOpen()
     a.whenOpen()
-    expect(getState().when).toBeNull()
+    expect(getState().sheet).toBeNull()
   })
 })
 
@@ -1198,7 +1286,7 @@ describe('dump: sorted and planned thoughts step aside', () => {
     expect(shown()).toEqual(['c', 'a'])
   })
 
-  it('search reveals a hidden thought', () => {
+  it('search opens a hidden thought right where you are, without unhiding everything', () => {
     dump('a')
     fill('a', done)
     a.setMode('sort')
@@ -1206,30 +1294,42 @@ describe('dump: sorted and planned thoughts step aside', () => {
     expect(shown()).toEqual([])
     a.jumpTo(task('a').id)
     expect(getState().mode).toBe('dump')
-    expect(shown()).toEqual(['a'])
-    expect(getState().selectedId).toBe(task('a').id)
+    expect(getState().showPlanned).toBe(false)
+    expect(getState().sheet).toMatchObject({ ids: [task('a').id], purpose: 'edit' })
+  })
+
+  it('search from Today opens a thought planned for another day on Today, not in Dump', () => {
+    dump('a', 'b')
+    fill('a', { ...done, slot: addDays(todayKey(), 3) })
+    fill('b', done)
+    a.setMode('today')
+    a.jumpTo(task('a').id)
+    expect(getState().mode).toBe('today')
+    expect(getState().sheet?.ids).toEqual([task('a').id])
+    a.jumpTo(task('b').id)
+    expect(getState().todayCursor).toBe(task('b').id)
   })
 })
 
-describe('dump: → fills in what is missing', () => {
+describe('dump: → fills in what is missing, on the thought sheet', () => {
   const task = (text: string) => getState().items.find((i) => i.text === text)!
   const select = (text: string) => setState({ selectedId: task(text).id })
-  const dayKeys = () => [todayKey(), addDays(todayKey(), 1)]
+  const row = () => getState().sheet?.row
 
   it('asks for priority, then day, then time, and the thought leaves Dump when done', () => {
     dump('a', 'b')
     select('a')
-    a.finishOpen()
-    expect(getState().dumpFinish).toMatchObject({ id: task('a').id, step: 'quadrant' })
-    a.finishPick(2) // Schedule
+    a.fillOpen()
+    expect(getState().sheet).toMatchObject({ ids: [task('a').id], row: 'quadrant', purpose: 'fill' })
+    a.sheetPick(2) // Schedule
     expect(task('a').quadrant).toBe('schedule')
-    expect(getState().dumpFinish?.step).toBe('slot')
-    a.finishPick(2) // tomorrow
-    expect(task('a').slot).toBe(dayKeys()[1])
-    expect(getState().dumpFinish?.step).toBe('minutes')
-    a.finishPick(3) // 30m
+    expect(row()).toBe('slot')
+    a.sheetPick(2) // tomorrow
+    expect(task('a').slot).toBe(addDays(todayKey(), 1))
+    expect(row()).toBe('minutes')
+    a.sheetPick(3) // 30m
     expect(task('a').minutes).toBe(30)
-    expect(getState().dumpFinish).toBeNull()
+    expect(getState().sheet).toBeNull()
     expect(getState().selectedId).toBe(task('b').id) // lands on the next thought
     expect(visibleInDump(getState().items, false).map((i) => i.text)).toEqual(['b'])
   })
@@ -1238,57 +1338,57 @@ describe('dump: → fills in what is missing', () => {
     dump('a')
     setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do', slot: todayKey() })) })
     select('a')
-    a.finishOpen()
-    expect(getState().dumpFinish?.step).toBe('minutes')
+    a.fillOpen()
+    expect(row()).toBe('minutes')
   })
 
   it('has nothing to ask on a thought that is complete', () => {
     dump('a')
     setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do', slot: todayKey(), minutes: 5 })) })
     select('a')
-    a.finishOpen()
-    expect(getState().dumpFinish).toBeNull()
+    a.fillOpen()
+    expect(getState().sheet).toBeNull()
     expect(getState().toasts.at(-1)?.text).toContain('Nothing missing')
   })
 
   it('dropping it is enough: no day or time is asked', () => {
     dump('a')
     select('a')
-    a.finishOpen()
-    a.finishPick(4)
+    a.fillOpen()
+    a.sheetPick(4)
     expect(task('a').quadrant).toBe('drop')
-    expect(getState().dumpFinish).toBeNull()
+    expect(getState().sheet).toBeNull()
   })
 
-  it('↑/↓ skip to another missing field, and ← from the first option closes', () => {
+  it('↑/↓ move between rows, ←/→ and ↵ pick, and a pick moves on to what is still missing', () => {
     dump('a')
     select('a')
-    a.finishOpen()
-    a.finishStep(1)
-    expect(getState().dumpFinish?.step).toBe('slot')
-    a.finishPick(1)
+    a.fillOpen()
+    a.sheetRow(1)
+    expect(row()).toBe('slot')
+    a.sheetPick(1)
     expect(task('a').slot).toBe(todayKey())
-    expect(getState().dumpFinish?.step).toBe('minutes')
-    a.finishStep(-1) // the priority is still missing
-    expect(getState().dumpFinish?.step).toBe('quadrant')
-    a.finishArrow(1)
-    expect(getState().dumpFinish?.col).toBe(1)
-    a.finishEnter() // Schedule, which leaves only the time
+    expect(row()).toBe('minutes')
+    a.sheetRow(-1)
+    a.sheetRow(-1)
+    expect(row()).toBe('quadrant') // the priority is still missing
+    a.sheetCol(1)
+    expect(getState().sheet?.col).toBe(1)
+    a.sheetEnter() // Schedule, which leaves only the time
     expect(task('a').quadrant).toBe('schedule')
-    expect(getState().dumpFinish).toMatchObject({ step: 'minutes', col: 0 })
-    a.finishArrow(1)
-    a.finishArrow(-1)
-    expect(getState().dumpFinish?.col).toBe(0)
-    a.finishArrow(-1)
-    expect(getState().dumpFinish).toBeNull()
+    expect(getState().sheet).toMatchObject({ row: 'minutes', col: 0 })
+    a.sheetCol(-1)
+    expect(getState().sheet?.col).toBe(0) // stays on the first option
+    a.sheetClose()
+    expect(getState().sheet).toBeNull()
   })
 
   it('one ⌘Z takes back a pick and brings a hidden thought back, selected', () => {
     dump('a')
     setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do', slot: todayKey() })) })
     select('a')
-    a.finishOpen()
-    a.finishPick(3)
+    a.fillOpen()
+    a.sheetPick(3)
     expect(visibleInDump(getState().items, false)).toEqual([])
     a.undo()
     expect(task('a').minutes).toBeNull()
@@ -1301,8 +1401,8 @@ describe('dump: → fills in what is missing', () => {
     setState({ items: getState().items.map((i) => (i.text === 'trip' ? i : { ...i, parentId: task('trip').id })) })
     setState({ items: getState().items.map((i) => (i.text === 'hotel' ? { ...i, quadrant: 'schedule' as const } : i)) })
     select('trip')
-    a.finishOpen()
-    a.finishPick(1) // Do: only flights lacked a priority
+    a.fillOpen()
+    a.sheetPick(1) // Do: only flights lacked a priority
     expect(task('flights').quadrant).toBe('do')
     expect(task('hotel').quadrant).toBe('schedule')
     a.undo()
@@ -1310,77 +1410,111 @@ describe('dump: → fills in what is missing', () => {
     expect(task('hotel').quadrant).toBe('schedule')
   })
 
-  it('⌘S giving the day while filling in moves on to what is still missing', () => {
+  it('typing a day while filling in moves on to what is still missing', () => {
     dump('a')
     select('a')
-    a.finishOpen()
-    a.finishStep(1)
-    a.whenOpen()
-    a.whenApply(addDays(todayKey(), 4))
-    expect(getState().dumpFinish?.step).toBe('quadrant')
-  })
-
-  it('opening something else closes it', () => {
-    dump('a', 'b')
-    select('a')
-    a.finishOpen()
-    a.startEdit(task('b').id)
-    expect(getState().dumpFinish).toBeNull()
+    a.fillOpen()
+    a.sheetType('fri') // a letter on the sheet starts typing a day
+    expect(getState().sheet).toMatchObject({ row: 'slot', query: 'fri' })
+    a.sheetEnter()
+    expect(task('a').slot).not.toBeNull()
+    expect(row()).toBe('minutes')
   })
 })
 
-describe('edit text on every screen (⌘E)', () => {
+describe('the thought sheet (↵, ⌘E)', () => {
   const task = (text: string) => getState().items.find((i) => i.text === text)!
 
-  it('Dump: opens the selected thought for editing, or says to select one', () => {
+  it('Dump: opens the selected thought, or says to select one', () => {
     dump('a')
     setState({ selectedId: null })
     a.editCurrent()
-    expect(getState().editing).toBeNull()
+    expect(getState().sheet).toBeNull()
     expect(getState().toasts.at(-1)?.text).toContain('Select')
     setState({ selectedId: task('a').id })
     a.editCurrent()
-    expect(getState().editing).toMatchObject({ kind: 'item', id: task('a').id })
+    expect(getState().sheet).toMatchObject({ ids: [task('a').id], row: 'text', purpose: 'edit' })
+    expect(a.sheetRows(getState().sheet!)).toEqual(['text', 'quadrant', 'slot', 'minutes'])
   })
 
-  it('Sort and Plan: edit the card', () => {
+  it('Sort and Plan: open the card, and saving the text changes only the text', () => {
     dump('a')
     a.setMode('sort')
     a.editCurrent()
-    expect(getState().trayEditing).toBe(task('a').id)
-    a.trayCommit(task('a').id, 'a2')
+    a.sheetSetText('a2')
+    a.sheetClose()
+    expect(task('a2')).toBeTruthy()
     a.setMode('plan')
     a.editCurrent()
-    expect(getState().trayEditing).toBe(task('a2').id)
+    expect(getState().sheet?.ids).toEqual([task('a2').id])
   })
 
-  it('Today: edits the selected task in place, and saving changes only its text', () => {
-    dump('a', 'b')
-    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do' as const, slot: todayKey(), minutes: 15 })) })
-    a.setMode('today')
-    a.todayFocus(task('b').id)
+  it('stays open while you change priority, day and time, each applied at once', () => {
+    dump('a')
+    setState({ selectedId: task('a').id })
     a.editCurrent()
-    expect(getState().trayEditing).toBe(task('b').id)
-    a.trayCommit(task('b').id, ' b, reworded ')
-    expect(getState().trayEditing).toBeNull()
-    expect(task('b, reworded')).toMatchObject({ quadrant: 'do', minutes: 15 })
-    expect(a.todayCurrent()?.text).toBe('b, reworded')
+    a.sheetRow(1)
+    a.sheetPick(1)
+    a.sheetRow(1)
+    a.sheetPick(1)
+    a.sheetRow(1)
+    a.sheetPick(4)
+    expect(task('a')).toMatchObject({ quadrant: 'do', slot: todayKey(), minutes: 60 })
+    expect(getState().sheet?.receipt).toBe('time → 1h')
+    a.undo()
+    expect(task('a').minutes).toBeNull()
+    expect(getState().sheet).not.toBeNull() // ⌘Z keeps it open
   })
 
-  it('Archive: edits a finished thought', () => {
+  it('0 clears a row, and - / = nudge the time', () => {
+    dump('a')
+    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do' as const, minutes: 30 })), selectedId: task('a').id })
+    a.editCurrent()
+    a.sheetRow(1)
+    a.sheetPick(0)
+    expect(task('a').quadrant).toBeNull()
+    a.sheetNudge(1)
+    expect(task('a').minutes).toBe(45)
+    expect(getState().sheet?.row).toBe('minutes')
+  })
+
+  it('Today: edits several picked tasks at once, and offers the day’s sessions', () => {
+    dump('a', 'b', 'c')
+    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do' as const, slot: todayKey(), minutes: 15, session: i.text === 'c' ? 2 : 1 })) })
+    a.setMode('today')
+    a.todayFocus(task('a').id)
+    a.pickExtend(1)
+    a.editCurrent()
+    const sheet = getState().sheet!
+    expect(sheet.ids).toEqual([task('a').id, task('b').id])
+    expect(a.sheetRows(sheet)).toEqual(['quadrant', 'slot', 'minutes', 'session'])
+    expect(a.sheetOptions(sheet, 'session').map((o) => o.n)).toEqual([1, 2, 3]) // 3 starts a new one
+    a.sheetGo('session')
+    a.sheetPick(2)
+    expect(todaySessions(getState().items, todayKey()).map((g) => g.items.map((i) => i.text))).toEqual([['a', 'b', 'c']])
+  })
+
+  it('Archive: a finished thought only has its text', () => {
     dump('a')
     a.toggleDone(task('a').id)
     a.setMode('archive')
     a.editCurrent()
-    expect(getState().trayEditing).toBe(task('a').id)
-    a.trayCancel()
-    expect(task('a').text).toBe('a')
+    expect(a.sheetRows(getState().sheet!)).toEqual(['text'])
+  })
+
+  it('⌘K on the sheet ticks off what it shows', () => {
+    dump('a', 'b')
+    setState({ selectedId: task('a').id })
+    a.editCurrent()
+    a.sheetDone()
+    expect(getState().sheet).toBeNull()
+    expect(task('a').done).toBe(true)
   })
 
   it('says so when there is nothing selected', () => {
     a.setMode('today')
     a.editCurrent()
-    expect(getState().trayEditing).toBeNull()
+    expect(getState().sheet).toBeNull()
     expect(getState().toasts.at(-1)?.text).toContain('Nothing selected')
   })
 })
@@ -1525,6 +1659,35 @@ describe('picking several (⇧↑ ⇧↓)', () => {
   const planned = (m: Record<string, number>, extra: object = {}) =>
     setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'do' as const, slot: todayKey(), minutes: m[i.text] ?? null, ...extra })) })
 
+  it('Dump: ⇧↓ picks several, ⌘K ticks them all off as one undo step, and a parent covers its subtasks', () => {
+    dump('a', 'b', 'c')
+    setState({ selectedId: task('a').id })
+    a.pickExtend(1)
+    expect(getState().picked?.ids).toEqual(ids('a', 'b'))
+    expect(getState().selectedId).toBe(task('b').id)
+    a.completeCurrent()
+    expect(getState().items.filter((i) => i.done).map((i) => i.text)).toEqual(['a', 'b'])
+    expect(getState().selectedId).toBe(task('c').id)
+    a.undo()
+    expect(getState().items.filter((i) => i.done)).toEqual([])
+
+    setState({ items: getState().items.map((i) => (i.text === 'c' ? { ...i, parentId: task('b').id } : i)), selectedId: task('b').id })
+    a.pickExtend(1) // the parent and its subtask
+    a.deleteCurrent()
+    expect(texts()).toEqual(['a'])
+  })
+
+  it('Dump: ↑/↓ and esc go back to one', () => {
+    dump('a', 'b', 'c')
+    setState({ selectedId: task('a').id })
+    a.pickExtend(1)
+    a.dumpSelect(1)
+    expect(getState().picked).toBeNull()
+    a.pickExtend(-1)
+    a.dumpEscape()
+    expect(getState().picked).toBeNull()
+  })
+
   it('Today: ⇧↓ highlights a run, ⇧↑ shrinks it, and moving normally goes back to one', () => {
     dump('a', 'b', 'c', 'd')
     planned({ a: 5, b: 10, c: 15, d: 20 })
@@ -1648,8 +1811,9 @@ describe('picking several (⇧↑ ⇧↓)', () => {
     a.deckFocus('sort', task('a').id)
     a.pickExtend(1)
     a.whenOpen()
-    expect(getState().when).toMatchObject({ text: '2 thoughts', many: true })
-    a.whenApply(addDays(todayKey(), 3))
+    expect(getState().sheet?.ids).toEqual([task('a').id, task('b').id])
+    a.sheetType('in 3 days')
+    a.sheetEnter()
     expect([task('a').slot, task('b').slot, task('c').slot]).toEqual([addDays(todayKey(), 3), addDays(todayKey(), 3), todayKey()])
     expect(getState().picked).toBeNull()
     a.deckFocus('sort', task('a').id)

@@ -1,10 +1,10 @@
 import { AnimatePresence } from 'motion/react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, type CSSProperties } from 'react'
 import { Chip } from '../components/Chip'
-import { Kbd, Keys } from '../components/Kbd'
+import { Kbd } from '../components/Kbd'
 import { QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
 import { Tray, type Receipt } from '../components/Tray'
-import { todayKey } from '../lib/dates'
+import { shortDay } from '../lib/dates'
 import { fmt, sumMinutes } from '../lib/duration'
 import { keepFocus } from '../lib/motion'
 import { QUADRANTS, QUADRANT_BY_ID, type QuadrantMeta } from '../lib/quadrants'
@@ -20,9 +20,10 @@ interface QuadrantProps {
   currentId: string | null
   picked: Set<string>
   landed: { id: string; n: number } | null
+  today: string
 }
 
-function QuadrantBox({ meta, items, currentId, picked, landed }: QuadrantProps) {
+function QuadrantBox({ meta, items, currentId, picked, landed, today }: QuadrantProps) {
   const flash = landed && items.some((i) => i.id === landed.id) ? landed.n : null
   const home = items.some((i) => i.id === currentId)
   return (
@@ -30,15 +31,13 @@ function QuadrantBox({ meta, items, currentId, picked, landed }: QuadrantProps) 
       className="quad"
       data-q={meta.id}
       data-home={home || undefined}
-      onMouseDown={keepFocus}
-      onClick={() => deckFile('sort', meta.id)}
       aria-label={`${meta.title}: ${meta.blurb}`}
-      title={meta.hint}
     >
       {flash !== null && <span key={flash} className="quad__flash" />}
-      <header className="quad__head">
+      {/* Only the heading files the card: a stray click in the list should never move a thought. */}
+      <header className="quad__head" title={`File here. ${meta.hint}`} onMouseDown={keepFocus} onClick={() => deckFile('sort', meta.id)}>
         <span className="quad__keys">
-          <Kbd k={meta.key} size="lg" className="quad__key" />
+          <Kbd k={meta.num} size="lg" className="quad__key" />
         </span>
         <div className="quad__titles">
           <h3>{meta.title}</h3>
@@ -56,6 +55,7 @@ function QuadrantBox({ meta, items, currentId, picked, landed }: QuadrantProps) 
               selected={it.id === currentId}
               picked={picked.has(it.id)}
               fresh={landed?.id === it.id}
+              meta={it.slot ? shortDay(it.slot, today) : undefined}
               onSelect={() => deckFocus('sort', it.id)}
             />
           ))}
@@ -66,13 +66,19 @@ function QuadrantBox({ meta, items, currentId, picked, landed }: QuadrantProps) 
   )
 }
 
+/** The quadrant rows' heights, in proportion to what the fuller quadrant of each row holds. */
+function matrixRows(byQuadrant: Record<string, Item[]>): string {
+  const need = (ids: string[]) => 64 + 38 * Math.max(1, ...ids.map((id) => byQuadrant[id].length))
+  return `minmax(150px, ${need(['do', 'schedule'])}fr) minmax(150px, ${need(['delegate', 'drop'])}fr)`
+}
+
 export function SortMode() {
   const all = useStore((s) => s.items)
   const deck = useStore((s) => s.decks.sort)
   const landed = useStore((s) => s.landed)
   const pickedIds = useStore((s) => s.picked?.ids)
   const picked = useMemo(() => new Set(pickedIds), [pickedIds])
-  const today = todayKey()
+  const today = useStore((s) => s.today)
 
   // Parents are labels for their subtasks, so only the subtasks are sorted.
   const items = useMemo(() => leaves(live(all)), [all])
@@ -114,19 +120,19 @@ export function SortMode() {
           current && (
             <>
               {picked.size > 1 && <span className="tag tag--focus">{picked.size} picked</span>}
-              <QuadrantTag item={current} />
-              <SlotTag item={current} today={today} />
-              <TimeTag item={current} nudge />
+              <QuadrantTag item={current} edit />
+              <SlotTag item={current} today={today} edit />
+              <TimeTag item={current} nudge edit />
             </>
           )
         }
         idle={
           <>
-            <Keys keys={['q', 'w', 'a', 's']} size="xs" /> to file
+            <Kbd label="1–4" size="xs" /> file
             <span className="card__sep">·</span>
-            <Kbd label="1–6" size="xs" /> time
+            <Kbd k="space" size="xs" /> skip
             <span className="card__sep">·</span>
-            <Keys keys={['up', 'down']} size="xs" /> move
+            <Kbd k="enter" size="xs" /> open
           </>
         }
         empty={
@@ -154,17 +160,10 @@ export function SortMode() {
         }
       />
 
-      <div className="matrix">
-        <div className="axis axis--corner" />
-        <div className="axis axis--x">Urgent</div>
-        <div className="axis axis--x">Not urgent</div>
-        <div className="axis axis--y">Important</div>
-        {QUADRANTS.slice(0, 2).map((q) => (
-          <QuadrantBox key={q.id} meta={q} items={byQuadrant[q.id]} currentId={currentId} picked={picked} landed={landed} />
-        ))}
-        <div className="axis axis--y">Not important</div>
-        {QUADRANTS.slice(2).map((q) => (
-          <QuadrantBox key={q.id} meta={q} items={byQuadrant[q.id]} currentId={currentId} picked={picked} landed={landed} />
+      {/* Each row of the matrix is as tall as its fuller quadrant needs: room goes where the thoughts are. */}
+      <div className="matrix" style={{ '--rows': matrixRows(byQuadrant) } as CSSProperties}>
+        {QUADRANTS.map((q) => (
+          <QuadrantBox key={q.id} meta={q} items={byQuadrant[q.id]} currentId={currentId} picked={picked} landed={landed} today={today} />
         ))}
       </div>
     </div>

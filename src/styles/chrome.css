@@ -44,7 +44,8 @@
   height: 15px;
   background: var(--accent);
   border-radius: 1px;
-  animation: blink 1.1s steps(1) infinite;
+  /* A few blinks when the app opens, then it rests: endless motion in the corner pulls the eye. */
+  animation: blink 1.1s steps(1) 4;
 }
 
 .tabs {
@@ -178,6 +179,19 @@
   gap: 6px;
 }
 
+.hint--more {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.hint--more:hover {
+  color: var(--text-2);
+}
+
 .statusbar__right {
   margin-left: auto;
   display: flex;
@@ -281,6 +295,19 @@
   color: var(--bg);
 }
 
+/* In the focus view the task is the brightest thing on screen; toasts stay quiet. */
+.app[data-focusing] .toast {
+  background: var(--surface-2);
+  color: var(--text-2);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.app[data-focusing] .toast .kbd {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  color: var(--text-2);
+}
+
 /* ------------------------------------------------------------------ small screens */
 
 @media (max-width: 720px) {
@@ -303,6 +330,15 @@
   .statusbar__right {
     display: none;
   }
+  .hud {
+    display: none;
+  }
+}
+
+/* Touch screens have no keys to press: the hints are noise there. */
+@media (hover: none) and (pointer: coarse) {
+  .statusbar__hints,
+  .card__idle,
   .hud {
     display: none;
   }
