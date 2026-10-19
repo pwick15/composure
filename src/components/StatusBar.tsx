@@ -85,8 +85,16 @@ function hintsFor(s: State): Hint[] {
         h(['up', 'down'], 'move'),
         h('f', 'stop'),
       ]
+    if (s.run?.pause) return [h('enter', "I'm back"), h('i', "I'm back"), h('f', 'stop session')]
+    if (s.pausing) return [h('1–4', 'bathroom · break · call · chore', true), h('enter', 'start typed'), h('escape', 'cancel')]
     if (s.run)
-      return [h('mod+k', 'done, next'), h(['-', '='], 'more / less time'), h(['up', 'down'], 'move'), h('f', 'stop session')]
+      return [
+        h('mod+k', 'done, next'),
+        h('i', 'interruption'),
+        h(['-', '='], 'more / less time'),
+        h(['up', 'down'], 'move'),
+        h('f', 'stop session'),
+      ]
     return [
       h('f', 'start session'),
       h('n', 'add'),

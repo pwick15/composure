@@ -76,6 +76,8 @@ export interface State {
     /** Which option arrow keys are on, or null while the cursor is in the text. */
     cursor: { row: number; col: number } | null
   } | null
+  /** The "what came up?" line on the focus view while it's open. */
+  pausing: boolean
   /** The work session in progress, if any. Persisted, so it survives a reload. */
   run: Run | null
 
@@ -115,6 +117,7 @@ export const useStore = create<State>()(
         archiveCursor: null,
         archiveFrom: 'dump',
         todayAdd: null,
+        pausing: false,
         run: null,
 
         palette: { open: false, seed: '', nonce: 0 },

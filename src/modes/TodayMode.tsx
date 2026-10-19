@@ -18,12 +18,18 @@ import {
   todayProgress,
   todaySessions,
 } from '../lib/selectors'
-import { activeId, clock, effMinutes, leftovers, remainingMs, windowOf } from '../lib/session'
+import { PAUSE_PRESETS } from '../lib/interrupt'
+import { activeId, clock, effMinutes, leftovers, pauseLeftMs, remainingMs, taskClock, windowOf } from '../lib/session'
 import { splitLines } from '../lib/text'
 import type { Item } from '../lib/types'
 import { useNow } from '../lib/useNow'
 import {
   ADD_OPTIONS,
+  pauseBegin,
+  pauseClose,
+  pauseEnd,
+  pausePreset,
+  pauseSubmit,
   sessionCarryOn,
   sessionStart,
   sessionStop,
@@ -57,7 +63,9 @@ function SessionSummary({ items, today }: { items: Item[]; today: string }) {
   if (run?.phase === 'running') {
     const sessionOpen = new Set(openInSession(items, today, run.session).map((i) => i.id))
     const elsewhere = todayList(items, today).filter((i) => !run.queue.includes(i.id))
-    ms = remainingMs(run, items, sessionOpen, now) + elsewhere.reduce((n, i) => n + effMinutes(i), 0) * 60_000
+    ms = remainingMs(run, items, sessionOpen, taskClock(run, now)) + elsewhere.reduce((n, i) => n + effMinutes(i), 0) * 60_000
+    // Away right now: the rest of the pause comes first.
+    if (run.pause) ms += pauseLeftMs(run.pause, now)
   }
   const doneBy = clockTime(now + ms)
   const sessions = todaySessions(items, today).length
@@ -98,6 +106,7 @@ function SessionSummary({ items, today }: { items: Item[]; today: string }) {
 /** The running session: the clock for the whole thing, the task it's on, and what to do next. */
 function SessionPanel({ items, today }: { items: Item[]; today: string }) {
   const run = useStore((s) => s.run)
+  const pausing = useStore((s) => s.pausing)
   const now = useNow(run?.phase === 'running' ? 1000 : null)
   if (!run) return null
 
@@ -136,12 +145,54 @@ function SessionPanel({ items, today }: { items: Item[]; today: string }) {
     .slice(run.index + 1)
     .map((id) => byId.get(id))
     .find((i): i is Item => Boolean(i) && open.has(i!.id))
-  const winLeft = win ? win.start + win.ms - now : 0
+  // While you're away the task's clock is held where it was.
+  const t = taskClock(run, now)
+  const winLeft = win ? win.start + win.ms - t : 0
+  const { pause } = run
+
+  if (pause) {
+    const away = now - pause.startedAt
+    const planned = pause.minutes === null ? null : pause.minutes * 60_000
+    return (
+      <section className="session" data-phase="running" data-paused aria-live="polite">
+        <div className="session__head">
+          <span className="eyebrow">// {name.toLowerCase()} · paused</span>
+          <span className="session__clock">{clock(remainingMs(run, items, open, t))}</span>
+        </div>
+        <div className="session__now">
+          <span className="tag tag--focus">{pause.over ? 'over' : 'away'}</span>
+          <strong>{pause.label}</strong>
+          <span className="session__window">
+            {planned === null
+              ? `${clock(away)} and counting`
+              : planned > away
+                ? `${clock(planned - away)} of ${fmt(pause.minutes!)}`
+                : `+${clock(away - planned)} over`}
+          </span>
+        </div>
+        <p className="session__lede">
+          {active ? (
+            <>
+              Held: <b>{active.text}</b> · {clock(winLeft)} still yours
+            </>
+          ) : (
+            'Your task is waiting.'
+          )}
+        </p>
+        <p className="session__keys">
+          <button className="cta cta--inline" onMouseDown={keepFocus} onClick={pauseEnd}>
+            I'm back <Kbd k="enter" size="xs" />
+          </button>
+        </p>
+      </section>
+    )
+  }
+
   return (
     <section className="session" data-phase="running" aria-live="off">
       <div className="session__head">
         <span className="eyebrow">// {name.toLowerCase()} · running</span>
-        <span className="session__clock">{clock(remainingMs(run, items, open, now))}</span>
+        <span className="session__clock">{clock(remainingMs(run, items, open, t))}</span>
       </div>
       {active && (
         <>
@@ -153,7 +204,7 @@ function SessionPanel({ items, today }: { items: Item[]; today: string }) {
             </span>
           </div>
           <div className="progress" aria-hidden>
-            <div className="progress__fill" style={{ width: `${win ? Math.min(100, ((now - win.start) / win.ms) * 100) : 0}%` }} />
+            <div className="progress__fill" style={{ width: `${win ? Math.min(100, ((t - win.start) / win.ms) * 100) : 0}%` }} />
           </div>
         </>
       )}
@@ -174,10 +225,62 @@ function SessionPanel({ items, today }: { items: Item[]; today: string }) {
           <Kbd k="=" size="xs" /> more time
         </span>
         <span>
+          <Kbd k="i" size="xs" /> interruption
+        </span>
+        <span>
           <Kbd k="f" size="xs" /> stop
         </span>
       </p>
+      {pausing && <PauseLine />}
     </section>
+  )
+}
+
+/** "What came up?": 1–4 start a preset at once, or type it ("call mum 15m") and ↵. */
+function PauseLine() {
+  const ref = useRef<HTMLInputElement>(null)
+  useLayoutEffect(() => {
+    ref.current?.focus({ preventScroll: true })
+  }, [])
+  return (
+    <div className="pause-line" onMouseDown={keepFocus}>
+      <div className="pause-line__input">
+        <span className="prompt-glyph">›</span>
+        <input
+          ref={ref}
+          placeholder="What came up? e.g. call mum 15m"
+          aria-label="What came up"
+          spellCheck={false}
+          autoComplete="off"
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              feedback(e.nativeEvent, 'Away')
+              flushSync(() => pauseSubmit(e.currentTarget.value))
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              feedback(e.nativeEvent, 'Cancel')
+              pauseClose()
+            } else if (!e.currentTarget.value && /^[1-4]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+              e.preventDefault()
+              feedback(e.nativeEvent, PAUSE_PRESETS[Number(e.key) - 1].label)
+              flushSync(() => pausePreset(Number(e.key)))
+            }
+          }}
+          onBlur={pauseClose}
+        />
+      </div>
+      <div className="pause-line__presets">
+        {PAUSE_PRESETS.map((p, i) => (
+          <button key={p.label} type="button" className="attr" onClick={() => pauseBegin(p.label, p.minutes)}>
+            <span className="attr__n">{i + 1}</span>
+            {p.label}
+            {p.minutes ? ` ${fmt(p.minutes)}` : ''}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 

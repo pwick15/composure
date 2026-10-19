@@ -612,6 +612,16 @@ export const COMMANDS: Command[] = [
     run: a.sessionToggle,
   },
   {
+    id: 'today.pause',
+    title: 'Something came up: interruption, side task or break (or say you are back)',
+    hud: 'Interruption',
+    group: 'Today',
+    scope: 'today',
+    keys: ['i'],
+    keywords: 'pause break bathroom toilet call phone laundry chore interrupt away distraction coffee',
+    run: a.pauseOpen,
+  },
+  {
     id: 'today.start',
     title: 'Start the session, or carry on after time is up',
     hud: 'Start',

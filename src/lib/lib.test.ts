@@ -3,6 +3,8 @@ import { addDays, columnFor, LATER, planColumns, slotLabel } from './dates'
 import { matrixMarkdown, parseBackup, planICS, planMarkdown, thingsURL } from './export'
 import { fmt, stepMinutes } from './duration'
 import { fuzzyBest, fuzzyMatch } from './fuzzy'
+import { parsePause } from './interrupt'
+import { endPause, pauseLeftMs, taskClock, type Run } from './session'
 import { buildSections } from './palette'
 import {
   archiveDays,
@@ -404,5 +406,28 @@ describe('search', () => {
   it('a finished match never pushes the "add as a thought" row below the real results', () => {
     const sections = buildSections('zzzz', 'dump', [mk('b', 'zzzz old', true)])
     expect(sections[0].title).toBe('New')
+  })
+})
+
+describe('interruptions', () => {
+  it('reads what came up and how long it takes', () => {
+    expect(parsePause('call mum 15m')).toEqual({ label: 'Call mum', minutes: 15 })
+    expect(parsePause('hang laundry 15')).toEqual({ label: 'Hang laundry', minutes: 15 })
+    expect(parsePause('lunch 1h')).toEqual({ label: 'Lunch', minutes: 60 })
+    expect(parsePause('lunch 1.5 hours')).toEqual({ label: 'Lunch', minutes: 90 })
+    expect(parsePause('call')).toEqual({ label: 'Call', minutes: null }) // lasts until you're back
+    expect(parsePause('10 min')).toEqual({ label: 'Break', minutes: 10 })
+    expect(parsePause('  ')).toEqual({ label: 'Break', minutes: null })
+  })
+
+  it('holds the task clock while away and slides its window by the time spent', () => {
+    const run: Run = { session: 1, queue: ['a'], index: 0, startedAt: 1_000, phase: 'running' }
+    const away = { ...run, pause: { label: 'Call', startedAt: 5_000, minutes: null } }
+    expect(taskClock(run, 9_000)).toBe(9_000)
+    expect(taskClock(away, 9_000)).toBe(5_000)
+    expect(endPause(away, 65_000)).toEqual({ ...run, startedAt: 61_000 })
+    expect(pauseLeftMs({ label: 'B', startedAt: 0, minutes: 5 }, 60_000)).toBe(240_000)
+    expect(pauseLeftMs({ label: 'B', startedAt: 0, minutes: 5 }, 400_000)).toBe(0)
+    expect(pauseLeftMs({ label: 'B', startedAt: 0, minutes: null }, 400_000)).toBe(0)
   })
 })

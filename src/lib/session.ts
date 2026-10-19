@@ -7,6 +7,16 @@ import type { Item } from './types'
 
 const MINUTE = 60_000
 
+/** Time away from the task: the clock on it is held until you're back. */
+export interface Pause {
+  label: string
+  startedAt: number
+  /** How long it should take, or null while it lasts as long as it lasts. */
+  minutes: number | null
+  /** Set once its time has run out (you've been told); it carries on counting up until you're back. */
+  over?: boolean
+}
+
 export interface Run {
   /** Which session of the day this is (the `session` on its tasks). */
   session: number
@@ -18,6 +28,21 @@ export interface Run {
   startedAt: number
   /** "over" once every window has closed; what's still open is then up to you. */
   phase: 'running' | 'over'
+  /** An interruption, side task or break in progress. */
+  pause?: Pause
+}
+
+/** The clock the tasks run on: frozen at the moment a pause began, so none of their time is lost to it. */
+export const taskClock = (run: Run, now: number) => (run.pause ? run.pause.startedAt : now)
+
+/** How much of a timed pause is still to go. */
+export const pauseLeftMs = (pause: Pause, now: number) =>
+  pause.minutes === null ? 0 : Math.max(0, pause.startedAt + pause.minutes * MINUTE - now)
+
+/** Back from a pause: the task windows slide later by as long as you were away. */
+export function endPause(run: Run, now: number): Run {
+  const { pause, ...rest } = run
+  return pause ? { ...rest, startedAt: run.startedAt + Math.max(0, now - pause.startedAt) } : run
 }
 
 /** How long a task's window is: its estimate, or a default when it has none. */

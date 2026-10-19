@@ -5,7 +5,8 @@ import { finishOptions } from '../lib/finish'
 import { fmt, PRESETS, stepMinutes } from '../lib/duration'
 import { uid } from '../lib/id'
 import { QUADRANTS, QUADRANT_BY_ID } from '../lib/quadrants'
-import { activeId, advance, effMinutes, leftovers, startRun } from '../lib/session'
+import { activeId, advance, effMinutes, endPause, leftovers, pauseLeftMs, startRun } from '../lib/session'
+import { parsePause, PAUSE_PRESETS } from '../lib/interrupt'
 import {
   nextInQueue,
   archiveOrder,
@@ -368,6 +369,7 @@ function resetCursors() {
     todayAdd: null,
     dumpFinish: null,
     picked: null,
+    pausing: false,
   })
 }
 
@@ -1323,6 +1325,7 @@ export function sessionToggle() {
 /** ↵: start the selected task's session, or carry on after time's up. Never stops one. */
 export function sessionStart() {
   const { run } = get()
+  if (run?.pause) return pauseEnd()
   if (run) return run.phase === 'over' ? sessionCarryOn() : undefined
   const cur = todayCurrent()
   if (!cur) return nothingToday()
@@ -1337,7 +1340,7 @@ export function sessionStart() {
 
 export function sessionStop() {
   if (!get().run) return toast('No session running')
-  set({ run: null })
+  set({ run: null, pausing: false })
   toast('Session stopped')
 }
 
@@ -1367,6 +1370,7 @@ function sessionFinished(session: number) {
 export function sessionSync() {
   const { run, items } = get()
   if (!run) return
+  if (run.pause) return pauseTick(run)
   const open = openIds(run.session)
   // After time is up the session ends once the last unfinished task is ticked off.
   if (run.phase === 'over') return leftovers(run, open).length ? undefined : sessionFinished(run.session)
@@ -1390,6 +1394,64 @@ export function sessionSync() {
   const upNext = `Next: ${text(active)}`
   notify(`Time's up: ${text(timedOut.at(-1))}`, upNext)
   toast(`Time's up on "${text(timedOut.at(-1))}". ${upNext}`)
+}
+
+// ---------------------------------------------------------------- interruptions
+//
+// I (while a session runs) asks what came up. 1–4 start a bathroom break, a break, a call or a
+// chore at once; or type it ("hang laundry 15m"). The task's clock stops until you're back (↵ or
+// I again), and everything after slides later by the time you were away. When a timed one runs
+// out you're told, but it waits for you: it doesn't quietly start burning the task's time.
+
+/** I: ask what came up (or, if you're away, say you're back). */
+export function pauseOpen() {
+  const { run, pausing } = get()
+  if (!run || run.phase !== 'running') return toast('Start a session first', 'f')
+  if (run.pause) return pauseEnd()
+  set({ pausing: !pausing })
+}
+
+export const pauseClose = () => set({ pausing: false })
+
+/** Starts being away now. */
+export function pauseBegin(label: string, minutes: number | null) {
+  const { run } = get()
+  set({ pausing: false })
+  if (!run || run.phase !== 'running' || run.pause) return
+  set({ run: { ...run, pause: { label, minutes, startedAt: Date.now() } } })
+  toast(`${label}${minutes ? ` · ${fmt(minutes)}` : ''}. Clock paused`, 'enter')
+}
+
+/** 1–4 on the line. */
+export function pausePreset(n: number) {
+  const p = PAUSE_PRESETS[n - 1]
+  if (p) pauseBegin(p.label, p.minutes)
+}
+
+/** ↵ on the typed line: "call mum 15m". */
+export function pauseSubmit(text: string) {
+  if (!text.trim()) return pauseClose()
+  const { label, minutes } = parsePause(text)
+  pauseBegin(label, minutes)
+}
+
+/** Back to the task: its window slides later by as long as you were away. */
+export function pauseEnd() {
+  const { run } = get()
+  if (!run?.pause) return
+  const away = Date.now() - run.pause.startedAt
+  set({ run: endPause(run, Date.now()) })
+  toast(`Back. ${run.pause.label} took ${fmt(Math.max(1, Math.round(away / 60_000)))}`)
+}
+
+/** While away: tell you once when a timed pause runs out. The task's clock stays held. */
+function pauseTick(run: NonNullable<State['run']>) {
+  const { pause } = run
+  if (!pause || pause.over || pause.minutes === null || pauseLeftMs(pause, Date.now()) > 0) return
+  set({ run: { ...run, pause: { ...pause, over: true } } })
+  const task = get().items.find((i) => i.id === activeId(run))?.text ?? ''
+  notify(`${pause.label} is up`, task ? `Back to: ${truncate(task, 40)}` : undefined)
+  toast(`${pause.label} is up. ↵ when you're back`)
 }
 
 /** ⇧← / ⇧→: move the selected task to the previous or next session. Past the last one starts a new session. */

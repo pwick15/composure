@@ -76,6 +76,14 @@ describe('shift+arrows', () => {
   })
 })
 
+describe('I', () => {
+  it('is for interruptions on Today only', () => {
+    const i = key({ key: 'i', code: 'KeyI' })
+    expect(findCommand(i, 'today', false)?.id).toBe('today.pause')
+    for (const m of MODES.filter((m) => m !== 'today')) expect(findCommand(i, m, false)).toBeUndefined()
+  })
+})
+
 describe('mod+S', () => {
   it('sets the day on every screen and while typing, so the browser never offers to save the page', () => {
     const modS = key({ key: 's', code: 'KeyS', ...mod })

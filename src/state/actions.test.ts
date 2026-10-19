@@ -779,6 +779,65 @@ describe('work sessions', () => {
     expect(getState().toasts.at(-1)?.text).toMatch(/Time's up on "a"/)
   })
 
+  it('I asks what came up, 1–4 start a preset, and the clock on the task is held while away', () => {
+    day(['a', 10], ['b', 20])
+    a.pauseOpen()
+    expect(getState().toasts.at(-1)?.text).toContain('Start a session first')
+    a.sessionStart()
+    passMinutes(4)
+    a.pauseOpen()
+    expect(getState().pausing).toBe(true)
+    a.pausePreset(1) // bathroom, 5m
+    expect(getState().pausing).toBe(false)
+    expect(getState().run!.pause).toMatchObject({ label: 'Bathroom', minutes: 5 })
+    passMinutes(30) // far past a's window, but the task clock is held
+    expect(activeText()).toBe('a')
+    expect(done('a')).toBe(false)
+    a.pauseEnd()
+    expect(getState().run!.pause).toBeUndefined()
+    passMinutes(5) // a had 6 minutes left when it paused
+    expect(activeText()).toBe('a')
+    passMinutes(2)
+    expect(activeText()).toBe('b')
+  })
+
+  it('a typed one ("call mum 15m") starts the same way, I or ↵ brings you back, and the finish time slides', () => {
+    day(['a', 10])
+    a.sessionStart()
+    a.pauseOpen()
+    a.pauseSubmit('call mum 15m')
+    expect(getState().run!.pause).toMatchObject({ label: 'Call mum', minutes: 15 })
+    a.pauseOpen() // I again
+    expect(getState().run!.pause).toBeUndefined()
+    a.pauseOpen()
+    a.pauseSubmit('') // nothing typed: just closes
+    expect(getState().pausing).toBe(false)
+    expect(getState().run!.pause).toBeUndefined()
+    a.pauseOpen()
+    a.pauseSubmit('call')
+    expect(getState().run!.pause).toMatchObject({ label: 'Call', minutes: null })
+    passMinutes(7)
+    a.sessionStart() // ↵
+    expect(getState().run!.startedAt).toBe(T0 + 7 * MIN)
+    passMinutes(9)
+    expect(activeText()).toBe('a') // still has all ten minutes, from when you came back
+  })
+
+  it('tells you once when a timed one runs out, but keeps the task waiting', () => {
+    day(['a', 30])
+    a.sessionStart()
+    a.pausePreset(2) // break, 10m
+    passMinutes(9)
+    expect(getState().run!.pause?.over).toBeUndefined()
+    passMinutes(2)
+    expect(getState().run!.pause?.over).toBe(true)
+    expect(getState().toasts.at(-1)?.text).toContain('Break is up')
+    const toasts = getState().toasts.length
+    passMinutes(5)
+    expect(getState().toasts.length).toBe(toasts) // only once
+    expect(activeText()).toBe('a')
+  })
+
   it('ticking the active task off early starts the next window straight away', () => {
     day(['a', 20], ['b', 30])
     a.sessionStart()

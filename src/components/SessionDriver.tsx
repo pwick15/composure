@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { todayKey } from '../lib/dates'
 import { iconLabel, timerIcon } from '../lib/favicon'
 import { openInSession } from '../lib/selectors'
-import { activeId, clock, leftovers, remainingMs, windowOf } from '../lib/session'
+import { activeId, clock, leftovers, remainingMs, taskClock, windowOf } from '../lib/session'
 import { startTicker } from '../lib/ticker'
 import { sessionSync } from '../state/actions'
 import { getState, useStore } from '../state/store'
@@ -16,12 +16,13 @@ function tabState() {
   if (run.phase === 'over') {
     return { title: `Time's up · ${leftovers(run, open).length} left`, icon: { label: '!', progress: 1, over: true } }
   }
-  const left = remainingMs(run, items, open, now)
+  const t = taskClock(run, now)
+  const left = remainingMs(run, items, open, t)
   const task = items.find((i) => i.id === activeId(run))
   const win = windowOf(run, items)
   return {
-    title: `${clock(left)} · ${task?.text ?? 'Session'}`,
-    icon: { label: iconLabel(left), progress: win ? (now - win.start) / win.ms : 0, over: false },
+    title: run.pause ? `Paused · ${run.pause.label}` : `${clock(left)} · ${task?.text ?? 'Session'}`,
+    icon: { label: run.pause ? '⏸' : iconLabel(left), progress: win ? (t - win.start) / win.ms : 0, over: false },
   }
 }
 

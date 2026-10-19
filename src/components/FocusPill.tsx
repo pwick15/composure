@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { todayKey } from '../lib/dates'
 import { keepFocus, SNAP } from '../lib/motion'
 import { openInSession } from '../lib/selectors'
-import { activeId, clock, leftovers, remainingMs, windowOf } from '../lib/session'
+import { activeId, clock, leftovers, remainingMs, taskClock, windowOf } from '../lib/session'
 import { useNow } from '../lib/useNow'
 import { sessionStop, setMode, truncate } from '../state/actions'
 import { useStore } from '../state/store'
@@ -16,7 +16,8 @@ export function FocusPill() {
   const today = todayKey()
   const open = new Set(run ? openInSession(items, today, run.session).map((i) => i.id) : [])
   const win = run ? windowOf(run, items) : null
-  const pct = win ? Math.min(1, Math.max(0, (now - win.start) / win.ms)) : run ? 1 : 0
+  const t = run ? taskClock(run, now) : now
+  const pct = win ? Math.min(1, Math.max(0, (t - win.start) / win.ms)) : run ? 1 : 0
   const active = run ? items.find((i) => i.id === activeId(run)) : undefined
   const left = run?.phase === 'over' ? leftovers(run, open).length : 0
 
@@ -39,10 +40,10 @@ export function FocusPill() {
             <circle cx="10" cy="10" r="8" style={{ strokeDashoffset: 50.27 * (1 - pct) }} />
           </svg>
           <span className="focus-pill__time">
-            {run.phase === 'over' ? "time's up" : clock(remainingMs(run, items, open, now))}
+            {run.phase === 'over' ? "time's up" : clock(remainingMs(run, items, open, t))}
           </span>
           <span className="focus-pill__text">
-            {run.phase === 'over' ? `${left} not finished` : active ? truncate(active.text, 22) : ''}
+            {run.phase === 'over' ? `${left} not finished` : run.pause ? `paused: ${truncate(run.pause.label, 16)}` : active ? truncate(active.text, 22) : ''}
           </span>
         </motion.button>
       )}

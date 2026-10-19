@@ -789,3 +789,58 @@
 .app[data-focusing] .statusbar:hover {
   opacity: 1;
 }
+
+/* ------------------------------------------------------------------ something came up */
+
+.pause-line {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 26px auto 0;
+  width: 100%;
+  max-width: 460px;
+}
+
+.pause-line__input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--accent-fg);
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.pause-line__input input {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  border: 0;
+  background: none;
+  font: 15px var(--font-sans);
+  color: var(--text);
+  caret-color: var(--accent-fg);
+}
+
+.pause-line__input input::placeholder {
+  color: var(--text-3);
+}
+
+.pause-line__presets {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Away from the task: the interruption takes the screen, the task waits quietly. */
+.session[data-paused] .session__window {
+  color: var(--q-delegate);
+}
+
+.session[data-paused] .session__lede b {
+  font-weight: 500;
+}

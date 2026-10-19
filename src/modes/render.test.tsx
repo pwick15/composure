@@ -186,6 +186,33 @@ describe('screens', () => {
     expect(html).toContain('across 2 sessions')
   })
 
+  it('the focus view shows an interruption in progress, holding the task', () => {
+    seed()
+    const run = {
+      session: 1, queue: ['f', 'r'], index: 0, startedAt: Date.now() - 5 * 60_000, phase: 'running' as const,
+      pause: { label: 'Call mum', startedAt: Date.now() - 60_000, minutes: null },
+    }
+    Object.assign(snapshot, { run })
+    setState({ run })
+    const html = render(<TodayMode />)
+    expect(html).toContain('paused')
+    expect(html).toContain('Call mum')
+    expect(html).toContain('and counting')
+    expect(html).toContain('Held: <b>book flights</b>')
+    expect(html.replaceAll('&#x27;', "'")).toContain("I'm back")
+    expect(render(<FocusPill />)).toContain('paused: Call mum')
+  })
+
+  it('the focus view offers the quick line, with a preset for each of 1–4', () => {
+    seed()
+    const run = { session: 1, queue: ['f', 'r'], index: 0, startedAt: Date.now(), phase: 'running' as const }
+    Object.assign(snapshot, { run, pausing: true })
+    setState({ run, pausing: true })
+    const html = render(<TodayMode />)
+    expect(html).toContain('What came up?')
+    for (const p of ['Bathroom 5m', 'Break 10m', 'Call', 'Chore 15m']) expect(html).toContain(p)
+  })
+
   it('Today is not in focus view before a session starts or after time is up', () => {
     seed()
     expect(render(<TodayMode />)).not.toContain('data-focusing')
