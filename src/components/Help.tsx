@@ -59,14 +59,18 @@ function Guide() {
             <Kbd k="tab" size="xs" /> tucks a line under the one above as a subtask.
           </p>
           <p>
-            Once a thought has a priority, a day and a time, Dump puts it away. <Kbd k="right" size="xs" /> asks for whatever is
+            Once a thought has a lane, a day and a time, Dump puts it away. <Kbd k="right" size="xs" /> asks for whatever is
             missing.
           </p>
         </Card>
         <Card name="Sort" title="Decide what matters" k="shift+2" mode="sort">
           <p>
-            One thought at a time goes into the Eisenhower matrix: <Kbd k="1" size="xs" /> Do, <Kbd k="2" size="xs" /> Schedule,{' '}
-            <Kbd k="3" size="xs" /> Someone else's, <Kbd k="4" size="xs" /> Let go.
+            One thought at a time goes into a lane: <Kbd k="1" size="xs" /> Do, what you chose to do;{' '}
+            <Kbd k="2" size="xs" /> Admin, what you have to do to keep life running; <Kbd k="3" size="xs" /> 2-minute, quicker
+            to do than to plan.
+          </p>
+          <p>
+            Once everything's sorted, the card walks you through the 2-minute ones: do it, then <Kbd k="mod+k" size="xs" />.
           </p>
           <p>
             <Kbd k="space" size="xs" /> skips one. <Kbd k="backspace" size="xs" /> brings back the last one you filed.
@@ -82,6 +86,10 @@ function Guide() {
         <Card name="Today" title="Do one thing at a time" k="shift+4" mode="today">
           <p>Today's plan, plus anything late, in work sessions. Click a session's name to name it.</p>
           <p>
+            <Kbd k="alt+m" size="xs" /> makes a task today's main thing: the hard one that would make the day count. It goes to
+            the top.
+          </p>
+          <p>
             <Kbd k="mod+k" size="xs" /> ticks a task off, <Kbd k="alt+t" size="xs" /> moves it to tomorrow,{' '}
             <Kbd k="space" size="xs" /> adds one, <Kbd label="1–9" size="xs" /> moves it to a session.
           </p>
@@ -91,7 +99,7 @@ function Guide() {
       <ul className="guide__more">
         <Card name="The thought" title="Change anything, from anywhere" k="enter">
           <p>
-            <Kbd k="enter" size="xs" /> or <Kbd k="mod+e" size="xs" /> opens a thought's text, priority, day, time and session
+            <Kbd k="enter" size="xs" /> or <Kbd k="mod+e" size="xs" /> opens a thought's text, lane, day, time and session
             in one place, on every screen.
           </p>
           <p>

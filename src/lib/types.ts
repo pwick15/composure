@@ -1,6 +1,7 @@
 export type Mode = 'dump' | 'sort' | 'plan' | 'today' | 'archive'
 
-export type Quadrant = 'do' | 'schedule' | 'delegate' | 'drop'
+/** The lane Sort files a thought in: chosen work, life upkeep, or quicker to do than to plan. */
+export type Quadrant = 'do' | 'admin' | 'quick'
 
 /** A planned slot: an ISO day key (YYYY-MM-DD) or the open-ended "later" bucket. */
 export type Slot = string
@@ -25,6 +26,8 @@ export interface Item {
    * order on that screen: ranked thoughts come first in the order you set, the rest follow.
    */
   manual?: Partial<Record<View, number>>
+  /** The day (ISO key) this is the main thing of: the one task that would make that day count. */
+  main?: string
 }
 
 /** The screens that list thoughts in an automatic order (quadrant and quickest first). */

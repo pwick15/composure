@@ -179,7 +179,7 @@ function Palette() {
                           <Highlight text={row.item.text} indices={row.indices} />
                         </span>
                         <span className="prow__keys">
-                          {/* A parent is a label for its subtasks: it never gets a priority of its own. */}
+                          {/* A parent is a label for its subtasks: it never gets a lane of its own. */}
                           {items.some((i) => i.parentId === row.item.id) ? (
                             <span className="tag tag--muted">{items.filter((i) => i.parentId === row.item.id).length} subtasks</span>
                           ) : (

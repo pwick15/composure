@@ -77,8 +77,8 @@ describe('the same keys on every screen', () => {
 })
 
 describe('digits file into the numbered boxes', () => {
-  it('Sort: 1–4 are the quadrants, 0 unsorts', () => {
-    expect([1, 2, 3, 4].map((n) => findCommand(digit(n), 'sort', false)?.id)).toEqual(['sort.do', 'sort.schedule', 'sort.delegate', 'sort.drop'])
+  it('Sort: 1–3 are the lanes, 0 unsorts', () => {
+    expect([1, 2, 3].map((n) => findCommand(digit(n), 'sort', false)?.id)).toEqual(['sort.do', 'sort.admin', 'sort.quick'])
     expect(findCommand(digit(0), 'sort', false)?.id).toBe('sort.clear')
     expect(findCommand(digit(5), 'sort', false)).toBeUndefined()
   })

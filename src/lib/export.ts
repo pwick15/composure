@@ -1,6 +1,6 @@
 import { addDays, columnFor, isDateSlot, LATER, longDate, planColumns } from './dates'
 import { cleanMinutes, fmt, sumMinutes } from './duration'
-import { QUADRANTS, QUADRANT_BY_ID } from './quadrants'
+import { QUADRANTS, QUADRANT_BY_ID, upgradeQuadrant } from './quadrants'
 import { isPlannable, planQueue } from './selectors'
 import { leaves, parentOf } from './tree'
 import type { Item } from './types'
@@ -40,7 +40,7 @@ export function planMarkdown(all: Item[], today: string): string {
 export function matrixMarkdown(all: Item[]): string {
   const items = leaves(all)
   const box = boxer(all)
-  const out = ['# Priorities']
+  const out = ['# Lanes']
   for (const q of QUADRANTS) {
     const list = items.filter((i) => i.quadrant === q.id)
     if (!list.length) continue
@@ -179,8 +179,6 @@ export function mergeSessionNames(existing: SessionNames, incoming: SessionNames
   return out
 }
 
-const QUADRANT_IDS = new Set<string>(QUADRANTS.map((q) => q.id))
-
 /** The places you gave a thought by hand, keeping only valid ones (as `{ manual }`, or nothing). */
 function cleanManual(raw: unknown): Pick<Item, 'manual'> {
   const manual: NonNullable<Item['manual']> = {}
@@ -202,7 +200,7 @@ export function parseBackup(json: string): Item[] {
       id: r.id,
       text: r.text,
       createdAt: typeof r.createdAt === 'number' ? r.createdAt : Date.now(),
-      quadrant: r.quadrant && QUADRANT_IDS.has(r.quadrant) ? r.quadrant : null,
+      quadrant: upgradeQuadrant(r.quadrant),
       slot: typeof r.slot === 'string' ? r.slot : null,
       done: Boolean(r.done),
       doneAt: r.done && typeof r.doneAt === 'number' ? r.doneAt : null,
@@ -210,6 +208,7 @@ export function parseBackup(json: string): Item[] {
       session: typeof r.session === 'number' && Number.isInteger(r.session) && r.session >= 1 ? r.session : 1,
       parentId: typeof r.parentId === 'string' && r.parentId !== r.id && ids.has(r.parentId) ? r.parentId : null,
       ...cleanManual(r.manual),
+      ...(typeof r.main === 'string' ? { main: r.main } : {}),
     }
   })
   // Subtasks are one level deep: a subtask of a subtask becomes a plain thought.

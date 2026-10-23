@@ -7,48 +7,32 @@ export interface QuadrantMeta {
   title: string
   blurb: string
   hint: string
-  row: 0 | 1
-  col: 0 | 1
 }
 
-// Layout follows the classic Eisenhower grid: urgency across, importance down. The numbers read
-// the grid like a page, 1 2 on top and 3 4 below, and digits never start a search.
+// Sort's lanes, left to right. What you chose to do is split from what you have to do to keep
+// life running, and anything quicker to do than to plan gets done straight after sorting.
+// Deciding when happens in Plan, so there is no Schedule lane.
 export const QUADRANTS: QuadrantMeta[] = [
   {
     id: 'do',
     num: '1',
     title: 'Do',
-    blurb: 'Urgent · Important',
-    hint: 'A real deadline, and it matters to you. Handle these first.',
-    row: 0,
-    col: 0,
+    blurb: 'By choice',
+    hint: "Curiosity, ambition, the work you chose. The hard things you'd be proud to have done.",
   },
   {
-    id: 'schedule',
+    id: 'admin',
     num: '2',
-    title: 'Schedule',
-    blurb: 'Not urgent · Important',
-    hint: 'Matters to you, with no clock on it yet. Give it a day.',
-    row: 0,
-    col: 1,
+    title: 'Admin',
+    blurb: 'Have to',
+    hint: 'Money, health, family, appointments, what you owe people. Clear it in one batch.',
   },
   {
-    id: 'delegate',
+    id: 'quick',
     num: '3',
-    title: "Someone else's",
-    blurb: 'Urgent · Not important',
-    hint: "Someone else's deadline landing on you: a favour, a chase-up, an invite. Hand it off, do it fast, or say no.",
-    row: 1,
-    col: 0,
-  },
-  {
-    id: 'drop',
-    num: '4',
-    title: 'Let go',
-    blurb: 'Not urgent · Not important',
-    hint: "Guilt, habit, or a 'should' you don't want. Writing it down was enough; let it go.",
-    row: 1,
-    col: 1,
+    title: '2-minute',
+    blurb: 'Under 2 minutes',
+    hint: "Quicker to do than to plan. Once everything's sorted, you do these straight away.",
   },
 ]
 
@@ -57,4 +41,15 @@ export const QUADRANT_BY_ID = Object.fromEntries(QUADRANTS.map((q) => [q.id, q])
   QuadrantMeta
 >
 
-export const QUADRANT_RANK: Record<Quadrant, number> = { do: 0, schedule: 1, delegate: 2, drop: 3 }
+export const QUADRANT_RANK: Record<Quadrant, number> = { do: 0, admin: 1, quick: 2 }
+
+// Before the lanes, Sort was an Eisenhower matrix. Do and Schedule were your own work, Someone
+// else's was mostly favours and chase-ups, and Let go has no lane, so it goes back to unsorted.
+const RENAMED: Record<string, Quadrant> = { schedule: 'do', delegate: 'admin' }
+
+/** The lane for a stored value, including the old quadrants. Anything else is unsorted. */
+export function upgradeQuadrant(value: unknown): Quadrant | null {
+  if (typeof value !== 'string') return null
+  if (Object.hasOwn(QUADRANT_BY_ID, value)) return value as Quadrant
+  return RENAMED[value] ?? null
+}

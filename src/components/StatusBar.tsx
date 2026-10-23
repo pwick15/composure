@@ -1,4 +1,4 @@
-import { live, resolvePlanCursor, resolveSortCursor } from '../lib/selectors'
+import { live, resolvePlanCursor, resolveSortCursor, sortGroups } from '../lib/selectors'
 import { toggleHelp } from '../state/actions'
 import { keepFocus } from '../lib/motion'
 import { useStore, type State } from '../state/store'
@@ -29,7 +29,7 @@ function hintsFor(s: State): Hint[] {
     const all = [h('mod+e', 'open all'), h('mod+k', 'done'), h(['-', '='], 'time'), h('mod+backspace', 'delete'), h('escape', 'just one')]
     if (s.mode === 'today') return [h('1–9', 'session', true), h('alt+t', 'not today'), ...all]
     if (s.mode === 'plan') return [h('1–8', 'day', true), ...all]
-    if (s.mode === 'sort') return [h('1–4', 'file', true), ...all]
+    if (s.mode === 'sort') return [h('1–3', 'file', true), ...all]
     return all
   }
 
@@ -50,14 +50,18 @@ function hintsFor(s: State): Hint[] {
     if (s.run?.pause) return [h('enter', "I'm back")]
     if (s.pausing) return [h('1–4', 'bathroom · break · call · chore', true), h('enter', 'start typed'), h('escape', 'cancel')]
     if (s.run) return [h('mod+k', 'done, next'), h('=', 'more time'), h('alt+p', 'something came up'), h('alt+f', 'stop')]
-    return [h('alt+f', 'start session'), h('space', 'add'), h('enter', 'open'), h('mod+k', 'done'), h('1–9', 'session', true), h('alt+t', 'not today')]
+    return [h('alt+f', 'start session'), h('alt+m', 'main thing'), h('space', 'add'), h('enter', 'open'), h('mod+k', 'done'), h('1–9', 'session', true), h('alt+t', 'not today')]
   }
 
   if (s.mode === 'archive') return [h('backspace', 'back'), h('mod+k', 'reopen'), h('enter', 'open'), h('mod+backspace', 'delete')]
 
   if (s.mode === 'sort') {
-    if (!resolveSortCursor(s.items, s.decks.sort.cursor)) return [h('shift+3', 'plan'), h('backspace', 'back'), h(['up', 'down'], 'revisit')]
-    return [h('1–4', 'file', true), h('space', 'skip'), h('enter', 'open'), h('⌥1–6', 'time', true), h('backspace', 'back'), h('mod+k', 'done')]
+    const cursor = resolveSortCursor(s.items, s.decks.sort.cursor)
+    if (!cursor) return [h('shift+3', 'plan'), h('backspace', 'back'), h(['up', 'down'], 'revisit')]
+    // The 2-minute run: nothing left to sort, so the card is one to do now.
+    if (!sortGroups(s.items)[0].length && s.items.find((i) => i.id === cursor)?.quadrant === 'quick')
+      return [h('mod+k', 'done, next'), h('space', 'not now'), h('1–3', 'refile', true), h('shift+3', 'plan the rest')]
+    return [h('1–3', 'file', true), h('space', 'skip'), h('enter', 'open'), h('⌥1–6', 'time', true), h('backspace', 'back'), h('mod+k', 'done')]
   }
 
   if (!resolvePlanCursor(s.items, s.decks.plan.cursor, s.today))

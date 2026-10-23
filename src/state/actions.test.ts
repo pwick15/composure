@@ -86,8 +86,8 @@ describe('sort', () => {
     dump('a', 'b', 'c')
     a.setMode('sort')
     expect(a.sortCurrent()?.text).toBe('a')
-    a.deckFile('sort', 'schedule')
-    expect(quadrants().a).toBe('schedule')
+    a.deckFile('sort', 'admin')
+    expect(quadrants().a).toBe('admin')
     expect(a.sortCurrent()?.text).toBe('b')
   })
 
@@ -95,12 +95,12 @@ describe('sort', () => {
     dump('a', 'b', 'c')
     a.setMode('sort')
     a.deckFile('sort', 'do')
-    a.deckFile('sort', 'drop') // oops: b was meant for Schedule
+    a.deckFile('sort', 'quick') // oops: b was meant for Admin
     expect(a.sortCurrent()?.text).toBe('c')
     a.deckBack('sort')
     expect(a.sortCurrent()?.text).toBe('b')
-    a.deckFile('sort', 'schedule')
-    expect(quadrants().b).toBe('schedule')
+    a.deckFile('sort', 'admin')
+    expect(quadrants().b).toBe('admin')
     expect(a.sortCurrent()?.text).toBe('c')
   })
 
@@ -117,7 +117,7 @@ describe('sort', () => {
   it('undo reverts the filing and brings the thought back to the tray', () => {
     dump('a', 'b')
     a.setMode('sort')
-    a.deckFile('sort', 'drop')
+    a.deckFile('sort', 'admin')
     expect(a.sortCurrent()?.text).toBe('b')
     a.undo()
     expect(quadrants().a).toBeNull()
@@ -126,10 +126,10 @@ describe('sort', () => {
     expect(a.sortCurrent()?.text).toBe('b')
   })
 
-  it('↑/↓ walk unsorted, then Do, Schedule, Delegate, Drop, stopping at the ends', () => {
+  it('↑/↓ walk unsorted, then Do, Admin, 2-minute, stopping at the ends', () => {
     dump('u', 'd', 's')
     setState({
-      items: getState().items.map((i) => ({ ...i, quadrant: i.text === 'd' ? 'do' : i.text === 's' ? 'schedule' : null })),
+      items: getState().items.map((i) => ({ ...i, quadrant: i.text === 'd' ? 'do' : i.text === 's' ? 'admin' : null })),
     })
     a.setMode('sort')
     const seen = [a.sortCurrent()?.text]
@@ -146,8 +146,8 @@ describe('sort', () => {
     a.setMode('sort')
     a.deckJump('sort', 1) // → into Do
     expect(a.sortCurrent()?.text).toBe('d')
-    a.deckFile('sort', 'delegate')
-    expect(quadrants().d).toBe('delegate')
+    a.deckFile('sort', 'admin')
+    expect(quadrants().d).toBe('admin')
     expect(a.sortCurrent()?.text).toBe('u1')
   })
 
@@ -165,10 +165,42 @@ describe('sort', () => {
     dump('a', 'b')
     a.setMode('sort')
     a.deckFile('sort', 'do')
-    a.deckFile('sort', 'drop')
+    a.deckFile('sort', 'admin')
     expect(a.sortCurrent()).toBeNull()
     a.deckBack('sort')
     expect(a.sortCurrent()?.text).toBe('b')
+  })
+
+  it('once everything is sorted, walks through the 2-minute tasks to do them now', () => {
+    dump('a', 'b', 'c', 'd')
+    a.setMode('sort')
+    a.deckFile('sort', 'quick')
+    expect(a.sortCurrent()?.text).toBe('b') // still sorting: the run waits
+    a.deckFile('sort', 'do')
+    a.deckFile('sort', 'quick')
+    a.deckFile('sort', 'quick')
+    expect(a.sortCurrent()?.text).toBe('a') // nothing left to sort: the first 2-minute task
+    a.deckKeep('sort') // not now
+    expect(a.sortCurrent()?.text).toBe('c')
+    a.completeCurrent()
+    expect(a.sortCurrent()?.text).toBe('d')
+    a.deckFile('sort', 'admin') // not 2 minutes after all
+    expect(quadrants().d).toBe('admin')
+    expect(a.sortCurrent()?.text).toBe('a') // round to the start
+    a.completeCurrent()
+    expect(a.sortCurrent()).toBeNull()
+  })
+
+  it('⇧→ slides along the lanes and ⌘↑ takes a thought back to unsorted', () => {
+    dump('a')
+    a.setMode('sort')
+    a.sortShift(0, 1)
+    expect(quadrants().a).toBe('admin')
+    a.sortShift(0, 1)
+    a.sortShift(0, 1)
+    expect(quadrants().a).toBe('quick')
+    a.sortShift(-1, 0)
+    expect(quadrants().a).toBeNull()
   })
 })
 
@@ -176,7 +208,7 @@ describe('plan', () => {
   it('a number applies at once, in priority order', () => {
     dump('later thing', 'urgent thing')
     setState({
-      items: getState().items.map((i) => ({ ...i, quadrant: i.text === 'urgent thing' ? 'do' : 'schedule' })),
+      items: getState().items.map((i) => ({ ...i, quadrant: i.text === 'urgent thing' ? 'do' : 'admin' })),
     })
     a.setMode('plan')
     expect(a.planCurrent()?.text).toBe('urgent thing')
@@ -201,9 +233,9 @@ describe('plan', () => {
     expect(a.planCurrent()?.text).toBe('m2')
   })
 
-  it('skips dropped items', () => {
-    dump('drop me')
-    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'drop' as const })) })
+  it('skips 2-minute thoughts', () => {
+    dump('reply to Sam')
+    setState({ items: getState().items.map((i) => ({ ...i, quadrant: 'quick' as const })) })
     a.setMode('plan')
     expect(a.planCurrent()).toBeNull()
   })
@@ -239,6 +271,22 @@ describe('today', () => {
     expect(a.todayCurrent()?.text).toBe('b')
     a.undo()
     expect(getState().items.find((i) => i.text === 'a')!.slot).toBe(todayKey())
+  })
+
+  it('⌥M makes the selected task the main thing: one a day, again to unmark, ⌘Z undoes', () => {
+    plannedToday('a', 'b')
+    const main = () => getState().items.filter((i) => i.main === todayKey()).map((i) => i.text)
+    a.todayMain()
+    expect(main()).toEqual(['a'])
+    a.todayFocus(getState().items.find((i) => i.text === 'b')!.id)
+    a.todayMain()
+    expect(main()).toEqual(['b'])
+    expect(todayList(getState().items, todayKey()).map((i) => i.text)).toEqual(['b', 'a'])
+    a.undo()
+    expect(main()).toEqual(['a'])
+    a.todayFocus(getState().items.find((i) => i.text === 'a')!.id)
+    a.todayMain()
+    expect(main()).toEqual([])
   })
 
   it('⌥→ steps through screens and stops at the ends', () => {
@@ -636,11 +684,11 @@ describe('add on Today', () => {
     expect(task('pay rent')).toMatchObject({ quadrant: 'do', minutes: 15 })
   })
 
-  it('picking the same quadrant or time again clears it', () => {
+  it('picking the same lane or time again clears it', () => {
     a.setMode('today')
     a.todayAddOpen()
-    a.todayAddQuadrant('schedule')
-    a.todayAddQuadrant('schedule')
+    a.todayAddQuadrant('admin')
+    a.todayAddQuadrant('admin')
     a.todayAddMinutes(30)
     a.todayAddMinutes(30)
     expect(getState().todayAdd).toEqual({ quadrant: null, minutes: null, cursor: null })
@@ -664,18 +712,18 @@ describe('add on Today', () => {
   it('a pasted list adds every line, and is one undo step', () => {
     a.setMode('today')
     a.todayAddOpen()
-    a.todayAddQuadrant('delegate')
+    a.todayAddQuadrant('admin')
     a.todayAddPaste('one', ['two', 'three'])
     expect(getState().items.map((i) => [i.text, i.quadrant])).toEqual([
-      ['one', 'delegate'],
-      ['two', 'delegate'],
-      ['three', 'delegate'],
+      ['one', 'admin'],
+      ['two', 'admin'],
+      ['three', 'admin'],
     ])
     a.undo()
     expect(getState().items).toHaveLength(0)
   })
 
-  it('new tasks land in the list in order: quadrant, then quickest first, and add to the day total', () => {
+  it('new tasks land in the list in order: lane, then quickest first, and add to the day total', () => {
     a.setMode('today')
     a.todayAddOpen()
     a.todayAddMinutes(60)
@@ -702,11 +750,10 @@ describe('add on Today', () => {
     expect(a.todayAddArrow('up')).toBe(false)
     expect(a.todayAddArrow('down')).toBe(true)
     expect(getState().todayAdd?.cursor).toEqual({ row: 0, col: 0 })
-    a.todayAddArrow('right')
-    a.todayAddArrow('right') // Do → Schedule → Delegate
+    a.todayAddArrow('right') // Do → Admin (a 2-minute task needs no day, so it isn't offered)
     a.todayAddArrow('right') // stops at the end of the row
     a.todayAddPick()
-    expect(getState().todayAdd?.quadrant).toBe('delegate')
+    expect(getState().todayAdd?.quadrant).toBe('admin')
     a.todayAddArrow('down')
     expect(getState().todayAdd?.cursor).toEqual({ row: 1, col: 0 })
     a.todayAddArrow('right')
@@ -717,7 +764,7 @@ describe('add on Today', () => {
     expect(getState().todayAdd?.cursor).toEqual({ row: 1, col: 2 })
 
     a.todayAddEnter('write report')
-    expect(task('write report')).toMatchObject({ quadrant: 'delegate', minutes: 30 })
+    expect(task('write report')).toMatchObject({ quadrant: 'admin', minutes: 30 })
     expect(getState().todayAdd?.cursor).toBeNull() // back in the text for the next one
   })
 
@@ -1269,9 +1316,9 @@ describe('dump: sorted and planned thoughts step aside', () => {
     expect(settled(getState().items).size).toBe(0)
   })
 
-  it('treats a dropped thought as dealt with: it needs no day or time', () => {
+  it('treats a 2-minute thought as dealt with: it needs no day or time', () => {
     dump('a', 'b')
-    fill('a', { quadrant: 'drop' })
+    fill('a', { quadrant: 'quick' })
     expect(shown()).toEqual(['b'])
   })
 
@@ -1334,13 +1381,13 @@ describe('dump: → fills in what is missing, on the thought sheet', () => {
   const select = (text: string) => setState({ selectedId: task(text).id })
   const row = () => getState().sheet?.row
 
-  it('asks for priority, then day, then time, and the thought leaves Dump when done', () => {
+  it('asks for the lane, then day, then time, and the thought leaves Dump when done', () => {
     dump('a', 'b')
     select('a')
     a.fillOpen()
     expect(getState().sheet).toMatchObject({ ids: [task('a').id], row: 'quadrant', purpose: 'fill' })
-    a.sheetPick(2) // Schedule
-    expect(task('a').quadrant).toBe('schedule')
+    a.sheetPick(2) // Admin
+    expect(task('a').quadrant).toBe('admin')
     expect(row()).toBe('slot')
     a.sheetPick(2) // tomorrow
     expect(task('a').slot).toBe(addDays(todayKey(), 1))
@@ -1369,12 +1416,12 @@ describe('dump: → fills in what is missing, on the thought sheet', () => {
     expect(getState().toasts.at(-1)?.text).toContain('Nothing missing')
   })
 
-  it('dropping it is enough: no day or time is asked', () => {
+  it('2-minute is enough: no day or time is asked', () => {
     dump('a')
     select('a')
     a.fillOpen()
-    a.sheetPick(4)
-    expect(task('a').quadrant).toBe('drop')
+    a.sheetPick(3)
+    expect(task('a').quadrant).toBe('quick')
     expect(getState().sheet).toBeNull()
   })
 
@@ -1389,11 +1436,11 @@ describe('dump: → fills in what is missing, on the thought sheet', () => {
     expect(row()).toBe('minutes')
     a.sheetRow(-1)
     a.sheetRow(-1)
-    expect(row()).toBe('quadrant') // the priority is still missing
+    expect(row()).toBe('quadrant') // the lane is still missing
     a.sheetCol(1)
     expect(getState().sheet?.col).toBe(1)
-    a.sheetEnter() // Schedule, which leaves only the time
-    expect(task('a').quadrant).toBe('schedule')
+    a.sheetEnter() // Admin, which leaves only the time
+    expect(task('a').quadrant).toBe('admin')
     expect(getState().sheet).toMatchObject({ row: 'minutes', col: 0 })
     a.sheetCol(-1)
     expect(getState().sheet?.col).toBe(0) // stays on the first option
@@ -1417,15 +1464,15 @@ describe('dump: → fills in what is missing, on the thought sheet', () => {
   it('on a parent, fills in every subtask that lacks it, as one undo step', () => {
     dump('trip', 'flights', 'hotel')
     setState({ items: getState().items.map((i) => (i.text === 'trip' ? i : { ...i, parentId: task('trip').id })) })
-    setState({ items: getState().items.map((i) => (i.text === 'hotel' ? { ...i, quadrant: 'schedule' as const } : i)) })
+    setState({ items: getState().items.map((i) => (i.text === 'hotel' ? { ...i, quadrant: 'admin' as const } : i)) })
     select('trip')
     a.fillOpen()
-    a.sheetPick(1) // Do: only flights lacked a priority
+    a.sheetPick(1) // Do: only flights lacked a lane
     expect(task('flights').quadrant).toBe('do')
-    expect(task('hotel').quadrant).toBe('schedule')
+    expect(task('hotel').quadrant).toBe('admin')
     a.undo()
     expect(task('flights').quadrant).toBeNull()
-    expect(task('hotel').quadrant).toBe('schedule')
+    expect(task('hotel').quadrant).toBe('admin')
   })
 
   it('typing a day while filling in moves on to what is still missing', () => {
@@ -1611,7 +1658,7 @@ describe('order by hand (⌥↑ ⌥↓)', () => {
     a.deckFocus('sort', task('a').id)
     a.orderMove(1)
     expect(task('a').manual).toEqual({ sort: 2 })
-    a.deckFile('sort', 'schedule')
+    a.deckFile('sort', 'admin')
     expect(task('a').manual).toBeUndefined()
   })
 
@@ -1813,21 +1860,21 @@ describe('picking several (⇧↑ ⇧↓)', () => {
     expect(task('b').slot).toBe(addDays(todayKey(), 2))
   })
 
-  it('Sort: filing, shifting and times apply to all picked; ⌘↑ moves between rows', () => {
+  it('Sort: filing, shifting and times apply to all picked; ⌘↑ takes them back to unsorted', () => {
     dump('a', 'b', 'c')
     a.setMode('sort')
     a.pickExtend(1)
     expect(getState().picked?.ids).toEqual(ids('a', 'b'))
-    a.deckFile('sort', 'schedule')
-    expect(task('a').quadrant).toBe('schedule')
-    expect(task('b').quadrant).toBe('schedule')
+    a.deckFile('sort', 'admin')
+    expect(task('a').quadrant).toBe('admin')
+    expect(task('b').quadrant).toBe('admin')
     expect(task('c').quadrant).toBeNull()
     a.deckFocus('sort', task('a').id)
     a.pickExtend(1)
     a.sortShift(0, -1)
     expect([task('a').quadrant, task('b').quadrant]).toEqual(['do', 'do'])
-    a.sortShift(1, 0)
-    expect([task('a').quadrant, task('b').quadrant]).toEqual(['delegate', 'delegate'])
+    a.sortShift(-1, 0)
+    expect([task('a').quadrant, task('b').quadrant]).toEqual([null, null])
     a.estimatePreset(3)
     expect([task('a').minutes, task('b').minutes]).toEqual([30, 30])
     a.estimateStep(1) // each steps from its own

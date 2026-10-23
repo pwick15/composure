@@ -1,5 +1,5 @@
 import { AnimatePresence } from 'motion/react'
-import { useEffect, useMemo, type CSSProperties } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Chip } from '../components/Chip'
 import { Kbd } from '../components/Kbd'
 import { QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
@@ -8,7 +8,7 @@ import { shortDay } from '../lib/dates'
 import { fmt, sumMinutes } from '../lib/duration'
 import { keepFocus } from '../lib/motion'
 import { QUADRANTS, QUADRANT_BY_ID, type QuadrantMeta } from '../lib/quadrants'
-import { live, resolveSortCursor, sortGroups } from '../lib/selectors'
+import { doneDay, live, quickLane, resolveSortCursor, sortGroups } from '../lib/selectors'
 import { leaves } from '../lib/tree'
 import type { Item } from '../lib/types'
 import { deckFile, deckFocus, setMode } from '../state/actions'
@@ -66,12 +66,6 @@ function QuadrantBox({ meta, items, currentId, picked, landed, today }: Quadrant
   )
 }
 
-/** The quadrant rows' heights, in proportion to what the fuller quadrant of each row holds. */
-function matrixRows(byQuadrant: Record<string, Item[]>): string {
-  const need = (ids: string[]) => 64 + 38 * Math.max(1, ...ids.map((id) => byQuadrant[id].length))
-  return `minmax(150px, ${need(['do', 'schedule'])}fr) minmax(150px, ${need(['delegate', 'drop'])}fr)`
-}
-
 export function SortMode() {
   const all = useStore((s) => s.items)
   const deck = useStore((s) => s.decks.sort)
@@ -85,7 +79,14 @@ export function SortMode() {
   const currentId = resolveSortCursor(all, deck.cursor)
   const current = items.find((i) => i.id === currentId) ?? null
   const unsorted = useMemo(() => items.filter((i) => !i.quadrant), [items])
-  const ahead = unsorted.filter((i) => i.id !== currentId).length
+  // Nothing left to sort: the card walks through the 2-minute tasks, to do them now.
+  const running = !unsorted.length && current?.quadrant === 'quick'
+  const quick = useMemo(() => quickLane(all), [all])
+  const quickDone = useMemo(
+    () => leaves(all).filter((i) => i.quadrant === 'quick' && doneDay(i) === today).length,
+    [all, today],
+  )
+  const ahead = running ? quick.length - 1 : unsorted.filter((i) => i.id !== currentId).length
 
   const lastId = deck.trail.at(-1)
   const last = items.find((i) => i.id === lastId)
@@ -97,7 +98,7 @@ export function SortMode() {
       }
     : null
 
-  // Each quadrant lists its thoughts quickest first.
+  // Each lane lists its thoughts quickest first.
   const byQuadrant = useMemo(
     () => Object.fromEntries(sortGroups(all).slice(1).map((list, i) => [QUADRANTS[i].id, list])) as Record<string, Item[]>,
     [all],
@@ -110,9 +111,9 @@ export function SortMode() {
   return (
     <div className="board">
       <Tray
-        label="Unsorted"
-        done={items.length - unsorted.length}
-        total={items.length}
+        label={running ? '2-minute · do it now' : 'Unsorted'}
+        done={running ? quickDone : items.length - unsorted.length}
+        total={running ? quickDone + quick.length : items.length}
         current={current}
         ahead={ahead}
         receipt={receipt}
@@ -127,13 +128,23 @@ export function SortMode() {
           )
         }
         idle={
-          <>
-            <Kbd label="1–4" size="xs" /> file
-            <span className="card__sep">·</span>
-            <Kbd k="space" size="xs" /> skip
-            <span className="card__sep">·</span>
-            <Kbd k="enter" size="xs" /> open
-          </>
+          running ? (
+            <>
+              <Kbd k="mod+k" size="xs" /> done
+              <span className="card__sep">·</span>
+              <Kbd k="space" size="xs" /> next
+              <span className="card__sep">·</span>
+              <Kbd k="shift+3" size="xs" /> plan the rest
+            </>
+          ) : (
+            <>
+              <Kbd label="1–3" size="xs" /> file
+              <span className="card__sep">·</span>
+              <Kbd k="space" size="xs" /> skip
+              <span className="card__sep">·</span>
+              <Kbd k="enter" size="xs" /> open
+            </>
+          )
         }
         empty={
           items.length ? (
@@ -160,8 +171,7 @@ export function SortMode() {
         }
       />
 
-      {/* Each row of the matrix is as tall as its fuller quadrant needs: room goes where the thoughts are. */}
-      <div className="matrix" style={{ '--rows': matrixRows(byQuadrant) } as CSSProperties}>
+      <div className="matrix">
         {QUADRANTS.map((q) => (
           <QuadrantBox key={q.id} meta={q} items={byQuadrant[q.id]} currentId={currentId} picked={picked} landed={landed} today={today} />
         ))}

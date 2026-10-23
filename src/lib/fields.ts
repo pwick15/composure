@@ -4,7 +4,7 @@ import { QUADRANTS } from './quadrants'
 import type { Item, Quadrant } from './types'
 
 // The thought sheet shows everything about a thought as rows, one per field. Each row's options
-// are numbered, and the number is the key that picks it: the same numbers Sort (quadrants) and
+// are numbered, and the number is the key that picks it: the same numbers Sort (lanes) and
 // Plan (days, 8 for later) use.
 
 /** One thing about a thought that the sheet edits. */
@@ -12,7 +12,7 @@ export type Field = 'text' | 'quadrant' | 'slot' | 'minutes' | 'session'
 
 export const FIELD_LABEL: Record<Field, string> = {
   text: 'text',
-  quadrant: 'priority',
+  quadrant: 'lane',
   slot: 'day',
   minutes: 'time',
   session: 'session',

@@ -4,7 +4,7 @@ import { CLEARED, FIELD_LABEL, fieldOptions, type Field, type FieldOption, type 
 import { askForNotifications, notificationsBlocked, notify } from '../lib/notify'
 import { fmt, PRESETS, stepMinutes } from '../lib/duration'
 import { uid } from '../lib/id'
-import { QUADRANTS, QUADRANT_BY_ID } from '../lib/quadrants'
+import { QUADRANTS } from '../lib/quadrants'
 import { activeId, advance, effMinutes, endPause, leftovers, pauseLeftMs, startRun, taskClock, windowOf } from '../lib/session'
 import { parsePause, PAUSE_PRESETS } from '../lib/interrupt'
 import {
@@ -22,6 +22,7 @@ import {
   gapsOf,
   isPlannable,
   listOf,
+  quickLane,
   settled,
   sortGroups,
   todayList,
@@ -78,7 +79,7 @@ function changedId(a: Item[], b: Item[]): string | null {
   const byId = new Map(b.map((i) => [i.id, i]))
   for (const i of a) {
     const j = byId.get(i.id)
-    if (!j || j.quadrant !== i.quadrant || j.slot !== i.slot || j.text !== i.text || j.done !== i.done || j.parentId !== i.parentId || j.minutes !== i.minutes || j.session !== i.session || j.manual !== i.manual) return i.id
+    if (!j || j.quadrant !== i.quadrant || j.slot !== i.slot || j.text !== i.text || j.done !== i.done || j.parentId !== i.parentId || j.minutes !== i.minutes || j.session !== i.session || j.manual !== i.manual || j.main !== i.main) return i.id
   }
   return b.find((j) => !a.some((i) => i.id === j.id))?.id ?? null
 }
@@ -335,7 +336,7 @@ export function clearDone() {
 }
 
 /**
- * Takes the sorting and planning back off everything still open: no priority, day, time or session.
+ * Takes the sorting and planning back off everything still open: no lane, day, time or session.
  * The thoughts stay (and so do finished ones, in the Archive), so Sort and Plan can be done again.
  */
 export function unorganise() {
@@ -344,10 +345,10 @@ export function unorganise() {
   const organised = (i: Item) => i.quadrant !== null || i.slot !== null || i.minutes !== null || i.session !== 1
   const n = leaves(items).filter((i) => open.has(i.id) && organised(i)).length
   if (!n) return toast('Nothing is sorted or planned yet')
-  commit(items.map((i) => (open.has(i.id) ? { ...i, quadrant: null, slot: null, minutes: null, session: 1, manual: undefined } : i)))
+  commit(items.map((i) => (open.has(i.id) ? { ...i, quadrant: null, slot: null, minutes: null, session: 1, manual: undefined, main: undefined } : i)))
   resetCursors()
   sessionSync() // a running session has nothing left to run
-  toast(`Cleared priority, day and time on ${plural(n, 'thought')}`, 'mod+z')
+  toast(`Cleared lane, day and time on ${plural(n, 'thought')}`, 'mod+z')
 }
 
 export function clearAll() {
@@ -706,14 +707,28 @@ function wander(m: DeckMode, to: string, exit: TrayExit) {
 
 function exitToward(m: DeckMode, value: string | null): TrayExit {
   if (value === null) return { x: 0, y: -1 }
-  if (m === 'sort') {
-    const q = QUADRANT_BY_ID[value as Quadrant]
-    return { x: q.col === 0 ? -1 : 1, y: q.row === 0 ? 1 : 2 }
-  }
+  if (m === 'sort') return { x: QUADRANTS.findIndex((q) => q.id === value) - 1, y: 1.4 }
   const today = todayKey()
   const cols = planColumns(today)
   const i = cols.findIndex((c) => c.key === columnFor(value, today))
   return { x: (i - (cols.length - 1) / 2) / 2, y: 1.6 }
+}
+
+// ---------------------------------------------------------------- the 2-minute run
+//
+// Once nothing is left to sort, Sort's card walks through the 2-minute tasks: do it now and ⌘K,
+// or Space for the next one. Each key moves on within the lane, round to the start, until it's empty.
+
+/** The 2-minute lane as it stood, when the selected thought is in it and nothing is left to sort. */
+function quickRun(m: DeckMode, cur: Item, queue: Item[]): Item[] | null {
+  return m === 'sort' && !queue.length && cur.quadrant === 'quick' ? quickLane(get().items) : null
+}
+
+/** The next 2-minute task after `id` that is still waiting, round to the start of the lane. */
+function nextInRun(before: Item[], id: string): string | null {
+  const lane = new Set(quickLane(get().items).map((i) => i.id))
+  const i = before.findIndex((it) => it.id === id)
+  return [...before.slice(i + 1), ...before.slice(0, i)].find((it) => lane.has(it.id))?.id ?? null
 }
 
 // ---------------------------------------------------------------- picking several (⇧↑ ⇧↓)
@@ -771,7 +786,7 @@ export function pickClear() {
 
 const pickedNote = (n: number) => (n > 1 ? ` ${n} thoughts` : '')
 
-/** Files the selected thought (a quadrant in Sort, a slot in Plan) and moves on. Files all picked ones together. */
+/** Files the selected thought (a lane in Sort, a slot in Plan) and moves on. Files all picked ones together. */
 export function deckFile(m: DeckMode, value: string | null) {
   const cur = m === 'sort' ? sortCurrent() : planCurrent()
   if (!cur) return nothingHere(m)
@@ -779,16 +794,17 @@ export function deckFile(m: DeckMode, value: string | null) {
   const filing = new Set(ids)
   const queueBefore = groupsFor(m)[0]
   const orderBefore = groupsFor(m).flat()
+  const run = quickRun(m, cur, queueBefore)
   transact(() => ids.forEach((id) => patch(id, m === 'sort' ? { quadrant: value as Quadrant | null } : { slot: value })))
 
   // Back to where you left off if you wandered, else the next thought in the queue (not one just filed).
   const { resume, trail } = get().decks[m]
   const waiting = queueBefore.filter((i) => i.id === cur.id || !filing.has(i.id))
   let next =
-    resume && !filing.has(resume) && groupsFor(m)[0].some((i) => i.id === resume)
-      ? resume
-      : nextInQueue(waiting, cur.id)
-  if (!next && !queueBefore.some((i) => i.id === cur.id)) {
+    run ? nextInRun(run, cur.id)
+    : resume && !filing.has(resume) && groupsFor(m)[0].some((i) => i.id === resume) ? resume
+    : nextInQueue(waiting, cur.id)
+  if (!next && !run && !queueBefore.some((i) => i.id === cur.id)) {
     // Nothing queued and you were browsing filed thoughts: stay at the same place in the list.
     const i = orderBefore.findIndex((it) => it.id === cur.id)
     next = [...orderBefore.slice(i + 1), ...orderBefore.slice(0, i).reverse()].find((it) => !filing.has(it.id))?.id ?? null
@@ -861,7 +877,7 @@ function landHere(m: DeckMode, id: string, lands: boolean) {
   set((s) => ({ landed: lands ? { id, n: (s.landed?.n ?? 0) + 1 } : s.landed }))
 }
 
-/** Shift+arrows in Sort: slide the selected thought to the neighbouring quadrant. Up from the top row unsorts it. */
+/** Shift+arrows in Sort: slide the selected thought to the neighbouring lane. ⌘↑ takes it back to unsorted. */
 export function sortShift(dRow: number, dCol: number) {
   const cur = sortCurrent()
   if (!cur) return nothingHere('sort')
@@ -876,17 +892,16 @@ export function sortShift(dRow: number, dCol: number) {
   landHere('sort', cur.id, moves.some((m) => m.next !== null))
 }
 
-/** Where a thought lands when slid a step in Sort's grid; undefined if it can't go that way. */
+/** Where a thought lands when slid a step in Sort; undefined if it can't go that way. */
 function shiftedQuadrant(it: Item, dRow: number, dCol: number): Quadrant | null | undefined {
   if (!it.quadrant) {
-    // Unsorted sits above the grid: down or left enters Do, right enters Schedule.
+    // Unsorted sits above the lanes: down or left enters Do, right enters Admin.
     if (dRow < 0) return undefined
-    return dCol > 0 ? 'schedule' : 'do'
+    return dCol > 0 ? 'admin' : 'do'
   }
-  const q = QUADRANT_BY_ID[it.quadrant]
-  const row = q.row + dRow
-  const col = clamp(q.col + dCol, 0, 1)
-  return row < 0 ? null : QUADRANTS.find((x) => x.row === clamp(row, 0, 1) && x.col === col)!.id
+  if (dRow < 0) return null
+  const at = QUADRANTS.findIndex((q) => q.id === it.quadrant)
+  return QUADRANTS[clamp(at + dCol, 0, QUADRANTS.length - 1)].id
 }
 
 /** Shift+←/→ in Plan: a day earlier or later. Left of today unplans; right of Later stays in Later. */
@@ -919,10 +934,12 @@ export function deckFocus(m: DeckMode, id: string) {
 function leaveDeck(m: DeckMode, cur: Item, change: () => void) {
   const queueBefore = groupsFor(m)[0]
   const orderBefore = groupsFor(m).flat()
+  const run = quickRun(m, cur, queueBefore)
   change()
   const { resume } = get().decks[m]
   let next: string | null
-  if (resume && resume !== cur.id && groupsFor(m)[0].some((i) => i.id === resume)) next = resume
+  if (run) next = nextInRun(run, cur.id)
+  else if (resume && resume !== cur.id && groupsFor(m)[0].some((i) => i.id === resume)) next = resume
   else if (queueBefore.some((i) => i.id === cur.id)) next = nextInQueue(queueBefore, cur.id)
   else {
     const i = orderBefore.findIndex((it) => it.id === cur.id)
@@ -1101,16 +1118,33 @@ export function todayDefer() {
   sessionSync()
 }
 
+/**
+ * ⌥M: make the selected task today's main thing, the one that would make the day count. There is
+ * one per day, so it takes over from any other. Again on the main thing unmarks it.
+ */
+export function todayMain() {
+  const cur = todayCurrent()
+  if (!cur) return nothingToday()
+  const today = todayKey()
+  const on = cur.main !== today
+  transact(() => {
+    for (const i of get().items) if (i.main === today && i.id !== cur.id) patch(i.id, { main: undefined })
+    patch(cur.id, { main: on ? today : undefined })
+  })
+  set({ picked: null })
+  toast(on ? `Main thing today: "${truncate(cur.text, 24)}"` : 'No main thing today', 'mod+z')
+}
+
 // ---------------------------------------------------------------- add on Today
 //
 // N opens a line at the top of Today. Type a task and ↵ puts it in today's plan and opens the
-// next line. To say what it is first, ↓ moves down into the options (quadrant, then time):
+// next line. To say what it is first, ↓ moves down into the options (lane, then time):
 // ←/→ walk along a row, ↑/↓ change row, ↵ picks (again to clear), and ⇧↵ adds the task from
 // anywhere. What you picked stays picked until the line closes.
 
 /** The rows of options under the add line. */
 export const ADD_OPTIONS = {
-  quadrant: QUADRANTS.filter((q) => q.id !== 'drop').map((q) => q.id), // a dropped task has no place in today
+  quadrant: QUADRANTS.filter((q) => q.id !== 'quick').map((q) => q.id), // a 2-minute task needs no day, so no place in today
   minutes: PRESETS,
 }
 const ADD_ROWS = [ADD_OPTIONS.quadrant, ADD_OPTIONS.minutes] as const
@@ -1119,7 +1153,7 @@ export function todayAddOpen() {
   if (!get().todayAdd) set({ todayAdd: { quadrant: null, minutes: null, cursor: null } })
 }
 
-/** Picks a quadrant for what's being added; picking the same one again clears it. */
+/** Picks a lane for what's being added; picking the same one again clears it. */
 export function todayAddQuadrant(quadrant: Quadrant) {
   const add = get().todayAdd
   if (add) set({ todayAdd: { ...add, quadrant: add.quadrant === quadrant ? null : quadrant } })
@@ -1523,7 +1557,7 @@ export function archiveDelete() {
 // ---------------------------------------------------------------- the thought sheet
 //
 // ↵ or ⌘E opens everything about the selected thought (or the picked ones) in one place: its text,
-// priority, day, time and session. ⌘S opens it on the day, → in Dump on the first thing missing,
+// lane, day, time and session. ⌘S opens it on the day, → in Dump on the first thing missing,
 // and clicking a tag opens it on that tag's row. The numbers on each row pick (the same ones Sort
 // and Plan use), picks apply at once, and ⌘Z undoes them.
 
@@ -1629,7 +1663,7 @@ export function sheetOpenFor(ids: string[], purpose: Sheet['purpose'], row?: Fie
   const draft: Sheet = { ids: found, purpose, row: 'text', col: 0, query: null, receipt: null, nonce: ++sheetNonce }
   const rows = sheetRows(draft)
   const first = row && rows.includes(row) ? row : purpose === 'fill' ? sheetNeeds(draft)[0] : rows[0]
-  if (!first) return toast('Nothing missing. It has a priority, a day and a time')
+  if (!first) return toast('Nothing missing. It has a lane, a day and a time')
   dumpOrderAtOpen = get().mode === 'dump' ? treeOrder(liveItems()) : []
   set({ sheet: { ...draft, row: first, col: currentCol(draft, first), query: typing && first === 'slot' ? '' : null } })
 }
@@ -1656,7 +1690,7 @@ export function sheetClose() {
   const sh = get().sheet
   if (!sh) return
   set({ sheet: null })
-  // A thought that now has a priority, a day and a time steps out of Dump: select its neighbour.
+  // A thought that now has a lane, a day and a time steps out of Dump: select its neighbour.
   if (get().mode === 'dump') landBeside(sh.ids[0], dumpOrderAtOpen)
 }
 

@@ -329,6 +329,74 @@
   margin-top: 14px;
 }
 
+/* ------------------------------------------------------------------ main thing */
+
+/* The one task that would make today count sits above the plan, so it's the first thing you see. */
+.main-thing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  width: 100%;
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.main-thing .eyebrow {
+  flex-basis: 100%;
+}
+
+.main-thing__text {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.main-thing__note {
+  font: 12px/1.4 var(--font-mono);
+  color: var(--text-3);
+}
+
+.main-thing[data-done] {
+  cursor: default;
+}
+
+.main-thing[data-done] .main-thing__text {
+  color: var(--text-2);
+}
+
+/* None picked yet: a quiet question, not a box to fill. */
+.main-thing--ask {
+  align-items: center;
+  cursor: default;
+  color: var(--text-2);
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--line-strong);
+}
+
+.main-thing--ask .main-thing__text {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.tag--main {
+  color: var(--accent-fg);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+
+.dump[data-focusing] .main-thing {
+  display: none;
+}
+
 .today-row {
   cursor: pointer;
 }
@@ -896,7 +964,7 @@ button.today-check:hover::before {
 
 /* Away from the task: the interruption takes the screen, the task waits quietly. */
 .session[data-paused] .session__window {
-  color: var(--q-delegate);
+  color: var(--q-quick);
 }
 
 .session[data-paused] .session__lede b {

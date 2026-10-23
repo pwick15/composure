@@ -228,13 +228,13 @@
 
 /* ------------------------------------------------------------------ matrix */
 
-/* The quadrant headings say what each axis means, so the grid needs no axis labels. */
+/* Sort's lanes side by side, each heading saying what belongs in it. */
 .matrix {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: var(--rows, minmax(0, 1fr) minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -587,9 +587,9 @@
   }
   .matrix {
     flex: none;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: none;
-    grid-auto-rows: minmax(200px, auto);
+    grid-auto-rows: minmax(160px, auto);
   }
   .tray__receipt {
     display: none;

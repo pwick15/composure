@@ -31,9 +31,8 @@
   --accent-soft: rgb(194 240 74 / 0.13);
 
   --q-do: #ff6b5b;
-  --q-schedule: #5eb0ff;
-  --q-delegate: #ffbf47;
-  --q-drop: #8a929c;
+  --q-admin: #5eb0ff;
+  --q-quick: #ffbf47;
 
   --overlay: rgb(5 6 8 / 0.6);
   --shadow: 0 12px 32px -12px rgb(0 0 0 / 0.7), 0 2px 6px -2px rgb(0 0 0 / 0.4);
@@ -61,9 +60,8 @@
   --accent-soft: rgb(120 170 0 / 0.14);
 
   --q-do: #e4483a;
-  --q-schedule: #1f78dc;
-  --q-delegate: #c98400;
-  --q-drop: #7b838d;
+  --q-admin: #1f78dc;
+  --q-quick: #c98400;
 
   --overlay: rgb(40 38 30 / 0.28);
   --shadow: 0 12px 28px -14px rgb(40 36 20 / 0.28), 0 2px 6px -2px rgb(40 36 20 / 0.1);
@@ -90,9 +88,8 @@
     --accent-soft: rgb(120 170 0 / 0.14);
 
     --q-do: #e4483a;
-    --q-schedule: #1f78dc;
-    --q-delegate: #c98400;
-    --q-drop: #7b838d;
+    --q-admin: #1f78dc;
+    --q-quick: #c98400;
 
     --overlay: rgb(40 38 30 / 0.28);
     --shadow: 0 12px 28px -14px rgb(40 36 20 / 0.28), 0 2px 6px -2px rgb(40 36 20 / 0.1);
@@ -103,8 +100,7 @@
 /* ------------------------------------------------------------------ quadrant tones */
 
 [data-q='do'] { --q: var(--q-do); }
-[data-q='schedule'] { --q: var(--q-schedule); }
-[data-q='delegate'] { --q: var(--q-delegate); }
-[data-q='drop'] { --q: var(--q-drop); }
+[data-q='admin'] { --q: var(--q-admin); }
+[data-q='quick'] { --q: var(--q-quick); }
 [data-q='none'] { --q: var(--line-strong); }
 [data-q='accent'] { --q: var(--accent-fg); }

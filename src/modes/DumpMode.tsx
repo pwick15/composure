@@ -330,7 +330,7 @@ export function DumpMode() {
   const showPlanned = useStore((s) => s.showPlanned)
   const pickedIds = useStore((s) => s.picked?.ids)
   const today = useStore((s) => s.today)
-  // Finished thoughts live in the Archive, not here. Ones with a priority, a day and a time are
+  // Finished thoughts live in the Archive, not here. Ones with a lane, a day and a time are
   // dealt with, so they step aside too (the footer brings them back).
   const open = useMemo(() => live(all), [all])
   const items = useMemo(() => visibleInDump(all, showPlanned), [all, showPlanned])

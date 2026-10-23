@@ -68,11 +68,11 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'mode.sort',
-    title: 'Sort: Eisenhower matrix',
+    title: 'Sort: Do, Admin or 2-minute',
     hud: 'Sort',
     group: 'Modes',
     keys: ['shift+2'],
-    keywords: 'prioritise prioritize triage urgent important quadrant',
+    keywords: 'prioritise prioritize triage lane admin quick two minute',
     run: () => a.setMode('sort'),
   },
   {
@@ -145,7 +145,7 @@ export const COMMANDS: Command[] = [
   { id: 'redo', title: 'Redo', group: 'Everywhere', keys: ['mod+shift+z', 'mod+y'], repeat: true, run: a.redo },
   {
     id: 'task.open',
-    title: 'Open the thought: text, priority, day, time and session',
+    title: 'Open the thought: text, lane, day, time and session',
     hud: 'Open',
     group: 'Everywhere',
     scopes: ['sort', 'plan', 'today', 'archive'],
@@ -159,7 +159,7 @@ export const COMMANDS: Command[] = [
     hud: 'Open',
     group: 'Everywhere',
     keys: ['mod+e'],
-    keywords: 'edit rename change text reword details priority day time session',
+    keywords: 'edit rename change text reword details lane priority day time session',
     run: a.editCurrent,
   },
   {
@@ -295,12 +295,12 @@ export const COMMANDS: Command[] = [
   { id: 'dump.edit', title: 'Edit its text, in the list', hud: 'Edit', group: 'Dump', scope: 'dump', keys: ['enter'], run: a.dumpEnter },
   {
     id: 'dump.finish',
-    title: 'Fill in what is missing: priority, day, time',
+    title: 'Fill in what is missing: lane, day, time',
     hud: 'Fill in',
     group: 'Dump',
     scope: 'dump',
     keys: ['right'],
-    keywords: 'sort plan priority urgent important day when time estimate how long complete clear',
+    keywords: 'sort plan lane priority admin day when time estimate how long complete clear',
     run: a.fillOpen,
   },
   {
@@ -462,7 +462,7 @@ export const COMMANDS: Command[] = [
       },
       {
         id: `${m}.right`,
-        title: m === 'sort' ? 'Next quadrant' : 'Next day',
+        title: m === 'sort' ? 'Next lane' : 'Next day',
         hud: 'Jump →',
         group,
         scope: m,
@@ -473,7 +473,7 @@ export const COMMANDS: Command[] = [
       },
       {
         id: `${m}.left`,
-        title: m === 'sort' ? 'Previous quadrant' : 'Previous day',
+        title: m === 'sort' ? 'Previous lane' : 'Previous day',
         hud: '← Jump',
         group,
         scope: m,
@@ -509,10 +509,10 @@ export const COMMANDS: Command[] = [
   // ------------------------------------------------------------ shift and ⌘ arrows: move the thought itself
   ...(
     [
-      ['up', -1, 0, 'Move up a quadrant', 'mod'],
-      ['down', 1, 0, 'Move down a quadrant', 'mod'],
-      ['left', 0, -1, 'Move to the left quadrant', 'shift'],
-      ['right', 0, 1, 'Move to the right quadrant', 'shift'],
+      ['up', -1, 0, 'Back to unsorted', 'mod'],
+      ['down', 1, 0, 'Into the lanes', 'mod'],
+      ['left', 0, -1, 'Move to the lane on the left', 'shift'],
+      ['right', 0, 1, 'Move to the lane on the right', 'shift'],
     ] as const
   ).map(
     ([key, dr, dc, title, modifier]): Command => ({
@@ -573,6 +573,16 @@ export const COMMANDS: Command[] = [
     keys: ['alt+t'],
     keywords: 'defer later postpone snooze tomorrow',
     run: a.todayDefer,
+  },
+  {
+    id: 'today.main',
+    title: "Make it today's main thing (again to unmark)",
+    hud: 'Main thing',
+    group: 'Today',
+    scope: 'today',
+    keys: ['alt+m'],
+    keywords: 'main one thing most important frog priority hard proud focus star',
+    run: a.todayMain,
   },
   {
     id: 'today.session',
@@ -742,9 +752,9 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'export.matrix',
-    title: 'Copy priorities as Markdown',
+    title: 'Copy lanes as Markdown',
     group: 'Export',
-    keywords: 'clipboard eisenhower matrix quadrants',
+    keywords: 'clipboard lanes do admin two minute priorities',
     run: () => void x.copyMatrix(),
   },
   {
@@ -785,7 +795,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'data.unorganise',
-    title: 'Start the sorting over: clear every priority, day and time',
+    title: 'Start the sorting over: clear every lane, day and time',
     group: 'Data',
     keywords: 'undo reset redo sort plan organise organize unsort unplan forgot again clear priorities days times',
     run: a.unorganise,
@@ -835,7 +845,7 @@ export const SHEET_HINTS: SheetHint[] = [
   { group: 'Dump', title: 'While typing: nest / un-nest this line', keys: ['tab', 'shift+tab'] },
   { group: 'Dump', title: 'While typing: finish (double-tap ⇧ or esc)', keys: ['escape'] },
   { group: 'Dump', title: 'On an empty line: delete it and step back', keys: ['backspace'] },
-  { group: 'Sort', title: 'Move the thought between quadrants', keys: ['mod+up', 'mod+down', 'shift+left', 'shift+right'] },
+  { group: 'Sort', title: 'Move the thought between lanes', keys: ['mod+up', 'mod+down', 'shift+left', 'shift+right'] },
   { group: 'Plan', title: 'Plan for today … +6 days', keys: ['1–7'], literal: true },
   { group: 'Plan', title: 'Move a day earlier / later', keys: ['shift+left', 'shift+right'] },
   { group: 'Today', title: 'Move it to that session', keys: ['1–9'], literal: true },

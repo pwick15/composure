@@ -10,6 +10,7 @@ import { DEFAULT_FOCUS, fmt } from '../lib/duration'
 import { EXIT_FAST, keepFocus, SPRING } from '../lib/motion'
 import { QUADRANT_BY_ID } from '../lib/quadrants'
 import {
+  mainThing,
   openInSession,
   resolveTodayCursor,
   timeLeft,
@@ -454,7 +455,7 @@ function Composer() {
       </span>
       <div className="today-add__attrs" onMouseDown={keepFocus}>
         <div className="today-add__row" data-active={add?.cursor?.row === 0 || undefined}>
-          <span className="today-add__label">quadrant</span>
+          <span className="today-add__label">lane</span>
           {ADD_OPTIONS.quadrant.map((id, i) => (
             <button
               key={id}
@@ -487,6 +488,37 @@ function Composer() {
         </div>
       </div>
     </li>
+  )
+}
+
+/**
+ * The one task that would make today count, above everything else. With none picked, Today asks for
+ * one: the hard, chosen thing that's easiest to put off.
+ */
+function MainThing({ items, today }: { items: Item[]; today: string }) {
+  const main = mainThing(items, today)
+  if (!main) {
+    return (
+      <p className="main-thing main-thing--ask">
+        <span className="eyebrow">// main thing</span>
+        <span className="main-thing__text">What would make today count? Select it and press</span>
+        <Kbd k="alt+m" size="xs" />
+      </p>
+    )
+  }
+  return (
+    <button
+      type="button"
+      className="main-thing"
+      data-done={main.done || undefined}
+      title={main.done ? undefined : 'Select it'}
+      onMouseDown={keepFocus}
+      onClick={() => !main.done && todayFocus(main.id)}
+    >
+      <span className="eyebrow">// main thing{main.done ? ' · done' : ''}</span>
+      <span className="main-thing__text">{main.text}</span>
+      {main.done ? <span className="main-thing__note">The rest is a bonus.</span> : <TimeTag item={main} />}
+    </button>
   )
 }
 
@@ -581,6 +613,7 @@ export function TodayMode() {
           </span>
           <span className="row__meta">
             {isActive && <span className="tag tag--focus">now</span>}
+            {item.main === today && <span className="tag tag--main">main</span>}
             {overtime.has(item.id) && <span className="tag tag--overdue">over time</span>}
             {item.quadrant && <QuadrantTag item={item} edit />}
             {isOverdue(item.slot, today) && <SlotTag item={item} today={today} edit />}
@@ -622,6 +655,7 @@ export function TodayMode() {
         )}
         {list.length > 0 && <SessionSummary items={items} today={today} />}
         <SessionPanel items={items} today={today} />
+        {(list.length > 0 || mainThing(items, today)) && <MainThing items={items} today={today} />}
 
         {list.length === 0 && !adding ? (
           <div className="dump-empty dump-empty--static">

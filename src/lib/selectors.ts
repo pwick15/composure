@@ -6,7 +6,7 @@ import type { Item, View } from './types'
 
 // ---------------------------------------------------------------- order
 //
-// Within a quadrant, quick things come first: finishing them early is momentum, and it clears
+// Within a lane, quick things come first: finishing them early is momentum, and it clears
 // the list fastest. Things with no estimate go last, since nobody knows how long they take.
 
 /**
@@ -23,7 +23,7 @@ const rankOf = (i: Item) => (i.quadrant ? QUADRANT_RANK[i.quadrant] : 3)
 const length = (i: Item) => i.minutes ?? Infinity
 const shorterFirst = (a: Item, b: Item) => (length(a) === length(b) ? 0 : length(a) < length(b) ? -1 : 1)
 
-/** Quadrant first, then shortest to longest. The sort is stable, so ties keep Dump order. */
+/** Lane first, then shortest to longest. The sort is stable, so ties keep Dump order. */
 const tackleOrder = (a: Item, b: Item) => rankOf(a) - rankOf(b) || shorterFirst(a, b)
 
 // ---------------------------------------------------------------- archive
@@ -89,7 +89,7 @@ export function resolveArchiveCursor(all: Item[], cursor: string | null): string
 
 // ---------------------------------------------------------------- dump
 //
-// Dump is for getting things out of your head. Once a thought has a priority, a day and a time it
+// Dump is for getting things out of your head. Once a thought has a lane, a day and a time it
 // has been dealt with, so Dump tucks it away (it is still in Sort, Plan and Today). What it
 // still lacks is what → fills in.
 
@@ -97,8 +97,8 @@ export function resolveArchiveCursor(all: Item[], cursor: string | null): string
 export type Gap = 'quadrant' | 'slot' | 'minutes'
 export const GAPS: Gap[] = ['quadrant', 'slot', 'minutes']
 
-/** What a thought still lacks. A dropped one is let go of, so it needs no day or time. */
-export const gapsOf = (i: Item): Gap[] => (i.quadrant === 'drop' ? [] : GAPS.filter((g) => i[g] === null))
+/** What a thought still lacks. A 2-minute one gets done right after sorting, so it needs no day or time. */
+export const gapsOf = (i: Item): Gap[] => (i.quadrant === 'quick' ? [] : GAPS.filter((g) => i[g] === null))
 
 /**
  * The thoughts Dump tucks away: actionable ones with nothing missing, and parents whose open
@@ -123,7 +123,7 @@ export function visibleInDump(all: Item[], showAll: boolean): Item[] {
 
 // ---------------------------------------------------------------- sort
 
-/** Sort's lists in reading order: the unsorted queue, then Do, Schedule, Someone else's, Let go. */
+/** Sort's lists in reading order: the unsorted queue, then Do, Admin and 2-minute. */
 export function sortGroups(all: Item[]): Item[][] {
   const items = leaves(live(all))
   return [
@@ -137,18 +137,25 @@ export function sortGroups(all: Item[]): Item[][] {
 /** The order ↑/↓ walks in Sort. */
 export const sortOrder = (items: Item[]) => sortGroups(items).flat()
 
-/** The stored cursor if it still exists, else the first unsorted item. */
+/** The 2-minute lane, as Sort lists it. */
+export const quickLane = (all: Item[]): Item[] => sortGroups(all)[1 + QUADRANTS.findIndex((q) => q.id === 'quick')]
+
+/**
+ * The stored cursor if it still exists, else the first unsorted item. Once nothing is left to sort,
+ * the first 2-minute task: Sort walks you through those before you plan the rest.
+ */
 export function resolveSortCursor(all: Item[], cursor: string | null): string | null {
   const items = leaves(live(all))
   if (cursor && items.some((i) => i.id === cursor)) return cursor
-  return items.find((i) => !i.quadrant)?.id ?? null
+  return (items.find((i) => !i.quadrant) ?? quickLane(all)[0])?.id ?? null
 }
 
 // ---------------------------------------------------------------- plan
 
-export const isPlannable = (item: Item) => item.quadrant !== 'drop'
+/** Whether a thought takes a day. A 2-minute one is done straight after sorting instead. */
+export const isPlannable = (item: Item) => item.quadrant !== 'quick'
 
-/** Items still waiting for a day: overdue first, then by quadrant priority, then list order. */
+/** Items still waiting for a day: overdue first, then by lane, then list order. */
 export function planQueue(all: Item[], today: string): Item[] {
   return leaves(live(all))
     .map((item, index) => ({ item, index }))
@@ -197,14 +204,28 @@ export function itemsInColumn(all: Item[], col: string, today: string): Item[] {
 // ---------------------------------------------------------------- today
 
 /**
- * Today's plan, one work session after another. Inside a session anything overdue comes first,
- * then quadrant by quadrant, quickest first. Only what is still open is here: a task you tick
- * off goes to the Archive (and into `todayProgress`).
+ * Today's plan, one work session after another. Inside a session the main thing comes first, then
+ * anything overdue, then lane by lane, quickest first. Only what is still open is here: a task you
+ * tick off goes to the Archive (and into `todayProgress`).
  */
 export function todayList(all: Item[], today: string): Item[] {
   const items = leaves(live(all)).filter((i) => isPlannable(i) && (i.slot === today || isOverdue(i.slot, today)))
   const late = (i: Item) => Number(isOverdue(i.slot, today))
-  return items.sort((a, b) => a.session - b.session || byHand('today')(a, b) || late(b) - late(a) || tackleOrder(a, b))
+  const main = (i: Item) => Number(i.main === today)
+  return items.sort(
+    (a, b) => a.session - b.session || byHand('today')(a, b) || main(b) - main(a) || late(b) - late(a) || tackleOrder(a, b),
+  )
+}
+
+/**
+ * Today's main thing: the one task you said would make the day count. Only while it is still on
+ * today's plan, or once it was done today; moved to another day, it is no longer today's.
+ */
+export function mainThing(all: Item[], today: string): Item | null {
+  const item = leaves(all).find((i) => i.main === today)
+  if (!item) return null
+  if (item.done) return doneDay(item) === today ? item : null
+  return todayList(all, today).some((i) => i.id === item.id) ? item : null
 }
 
 /**

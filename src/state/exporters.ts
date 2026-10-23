@@ -36,7 +36,7 @@ export async function copyPlan() {
 
 export async function copyMatrix() {
   const ok = await copyText(matrixMarkdown(get().items))
-  toast(ok ? 'Priorities copied as Markdown' : 'Copy failed. Check clipboard permissions')
+  toast(ok ? 'Lanes copied as Markdown' : 'Copy failed. Check clipboard permissions')
 }
 
 export function downloadCalendar() {

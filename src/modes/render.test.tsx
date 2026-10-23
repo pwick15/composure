@@ -33,7 +33,7 @@ const today = todayKey()
 /** A parent with two subtasks that are filed and planned, and a plain thought. */
 function seed() {
   load([
-      { ...base, id: 'p', text: 'Plan trip', quadrant: 'schedule', slot: today },
+      { ...base, id: 'p', text: 'Plan trip', quadrant: 'admin', slot: today },
       { ...base, id: 'f', text: 'book flights', parentId: 'p', quadrant: 'do', slot: today, minutes: 30 },
       { ...base, id: 'h', text: 'book hotel', parentId: 'p', quadrant: 'do', slot: today, minutes: 90, done: true },
       { ...base, id: 'r', text: 'pay rent', quadrant: 'do', slot: today },
@@ -53,7 +53,7 @@ describe('screens', () => {
   })
 
   it('Dump tucks away what is sorted and planned, and says how many', () => {
-    seed() // "book flights" has a priority, a day and a time; "pay rent" has no time
+    seed() // "book flights" has a lane, a day and a time; "pay rent" has no time
     const html = render(<DumpMode />)
     expect(html).toContain('pay rent')
     expect(html).not.toContain('book flights')
@@ -77,9 +77,9 @@ describe('screens', () => {
     Object.assign(snapshot, { sheet })
     setState({ sheet })
     const html = render(<ThoughtSheet />)
-    for (const label of ['text', 'priority', 'day', 'time']) expect(html).toContain(`>${label}</button>`)
+    for (const label of ['text', 'lane', 'day', 'time']) expect(html).toContain(`>${label}</button>`)
     expect(html).toContain('call mum') // in the text box
-    expect(html.match(/class="attr"/g)).toHaveLength(4 + 8 + 6) // quadrants, days, times
+    expect(html.match(/class="attr"/g)).toHaveLength(3 + 8 + 6) // lanes, days, times
     expect(html.match(/data-cursor="true"/g)).toHaveLength(1)
     expect(html).not.toContain('>session</button>') // no day yet, so no sessions to offer
   })
@@ -91,7 +91,7 @@ describe('screens', () => {
     setState({ sheet })
     const html = render(<ThoughtSheet />)
     expect(html).toContain('book hotel')
-    expect(html).not.toContain('>priority</button>')
+    expect(html).not.toContain('>lane</button>')
   })
 
   it('Sort puts the subtasks in quadrants, not the parent, each pointing back at it', () => {
@@ -112,14 +112,14 @@ describe('screens', () => {
     expect(html).toContain('30m') // today's total
   })
 
-  it('Today shows the add line with its quadrant and time chips, and marks what is picked', () => {
+  it('Today shows the add line with its lane and time chips, and marks what is picked', () => {
     seed()
     Object.assign(snapshot, { todayAdd: { quadrant: 'do', minutes: 30, cursor: { row: 1, col: 2 } } })
     setState({ todayAdd: { quadrant: 'do', minutes: 30, cursor: { row: 1, col: 2 } } })
     const html = render(<TodayMode />)
     expect(html).toContain('Add a task for today')
     expect(html).toContain('today-add__attrs')
-    expect(html.match(/class="attr"/g)).toHaveLength(9) // Do, Schedule, Delegate and six times
+    expect(html.match(/class="attr"/g)).toHaveLength(8) // Do, Admin and six times
     expect(html.match(/data-on="true"/g)).toHaveLength(2)
     expect(html.match(/data-cursor="true"/g)).toHaveLength(1) // the arrow keys' place: 30m
   })

@@ -9,10 +9,14 @@ import { buildSections } from './palette'
 import {
   archiveDays,
   archivedIds,
+  gapsOf,
   itemsInColumn,
   live,
+  mainThing,
   planGroups,
   planQueue,
+  quickLane,
+  resolveSortCursor,
   sortGroups,
   sortOrder,
   timeLeft,
@@ -101,8 +105,8 @@ describe('splitLines', () => {
 })
 
 describe('selectors', () => {
-  it('walks unsorted first, then quadrants in grid order', () => {
-    const items = [item('a', { quadrant: 'drop' }), item('b'), item('c', { quadrant: 'do' })]
+  it('walks unsorted first, then the lanes left to right', () => {
+    const items = [item('a', { quadrant: 'quick' }), item('b'), item('c', { quadrant: 'do' })]
     expect(sortOrder(items).map((i) => i.text)).toEqual(['b', 'c', 'a'])
   })
 
@@ -113,27 +117,53 @@ describe('selectors', () => {
     expect(groups.map((g) => g.map((i) => i.text).join())).toEqual(['q', 'today', '', '', '', '', '', '', 'later'])
   })
 
-  it('queues overdue first, then by quadrant, and leaves out dropped and done', () => {
+  it('queues overdue first, then by lane, and leaves out 2-minute and done', () => {
     const items = [
       item('unsorted'),
-      item('schedule', { quadrant: 'schedule' }),
+      item('admin', { quadrant: 'admin' }),
       item('do', { quadrant: 'do' }),
-      item('overdue', { quadrant: 'delegate', slot: '2026-10-01' }),
-      item('dropped', { quadrant: 'drop' }),
+      item('overdue', { quadrant: 'admin', slot: '2026-10-01' }),
+      item('quick', { quadrant: 'quick' }),
       item('done', { quadrant: 'do', done: true }),
       item('planned', { quadrant: 'do', slot: TODAY }),
     ]
-    expect(planQueue(items, TODAY).map((i) => i.text)).toEqual(['overdue', 'do', 'schedule', 'unsorted'])
+    expect(planQueue(items, TODAY).map((i) => i.text)).toEqual(['overdue', 'do', 'admin', 'unsorted'])
+  })
+
+  it('a 2-minute thought needs no day or time, and stays out of Today', () => {
+    const quick = item('reply to Sam', { quadrant: 'quick', slot: TODAY })
+    expect(gapsOf(quick)).toEqual([])
+    expect(todayList([quick], TODAY)).toEqual([])
+  })
+
+  it('once nothing is left to sort, Sort lands on the first 2-minute task', () => {
+    const items = [item('a', { quadrant: 'do' }), item('b', { quadrant: 'quick', minutes: 5 }), item('c', { quadrant: 'quick' })]
+    expect(quickLane(items).map((i) => i.text)).toEqual(['b', 'c'])
+    expect(resolveSortCursor(items, null)).toBe(items[1].id)
+    expect(resolveSortCursor([...items, item('new')], null)).not.toBe(items[1].id)
+  })
+
+  it("puts today's main thing first in its session, and forgets it once it moves to another day", () => {
+    const items = [
+      item('quick win', { quadrant: 'do', slot: TODAY, minutes: 5 }),
+      item('hard thing', { quadrant: 'do', slot: TODAY, minutes: 120, main: TODAY }),
+    ]
+    expect(todayList(items, TODAY).map((i) => i.text)).toEqual(['hard thing', 'quick win'])
+    expect(mainThing(items, TODAY)?.text).toBe('hard thing')
+    const moved = items.map((i) => ({ ...i, slot: addDays(TODAY, 1) }))
+    expect(mainThing(moved, TODAY)).toBeNull()
+    const done = items.map((i) => ({ ...i, done: true, doneAt: new Date(`${TODAY}T12:00:00`).getTime() }))
+    expect(mainThing(done, TODAY)?.text).toBe('hard thing')
   })
 })
 
 describe('export', () => {
   const items = [
     item('Pay rent, today; really', { quadrant: 'do', slot: TODAY }),
-    item('Plan trip', { quadrant: 'schedule', slot: '2026-10-14' }),
-    item('Someday thing', { quadrant: 'schedule', slot: LATER }),
+    item('Plan trip', { quadrant: 'do', slot: '2026-10-14' }),
+    item('Someday thing', { quadrant: 'admin', slot: LATER }),
     item('Unplanned', { quadrant: 'do' }),
-    item('Dropped', { quadrant: 'drop', slot: TODAY }),
+    item('Reply to Sam', { quadrant: 'quick', slot: TODAY }),
   ]
 
   it('writes Markdown grouped by day', () => {
@@ -142,8 +172,8 @@ describe('export', () => {
     expect(md).toContain('## Wed 14 Oct\n- [ ] Plan trip')
     expect(md).toContain('## Later\n- [ ] Someday thing')
     expect(md).toContain('## Not planned yet\n- [ ] Unplanned (Do)')
-    expect(md).not.toContain('Dropped')
-    expect(matrixMarkdown(items)).toContain('## Let go (Not urgent · Not important)\n- [ ] Dropped')
+    expect(md).not.toContain('Reply to Sam')
+    expect(matrixMarkdown(items)).toContain('## 2-minute (Under 2 minutes)\n- [ ] Reply to Sam')
   })
 
   it('writes valid all-day iCalendar events with escaping', () => {
@@ -152,7 +182,7 @@ describe('export', () => {
     expect(ics).toContain('DTSTART;VALUE=DATE:20261012\r\nDTEND;VALUE=DATE:20261013')
     expect(ics).toContain('SUMMARY:Pay rent\\, today\\; really')
     expect(ics).toContain('DTSTAMP:20261012T093000Z')
-    expect(ics).not.toContain('Dropped')
+    expect(ics).not.toContain('Reply to Sam')
   })
 
   it('folds long iCalendar lines at 75 octets', () => {
@@ -177,10 +207,16 @@ describe('export', () => {
     const ok = parseBackup(JSON.stringify({ app: 'composure', version: 1, items: [{ id: 'a', text: 'x', quadrant: 'nope' }] }))
     expect(ok[0]).toMatchObject({ id: 'a', text: 'x', quadrant: null, slot: null, done: false })
   })
+
+  it('reads old backups filed in the Eisenhower quadrants into the lanes', () => {
+    const old = ['do', 'schedule', 'delegate', 'drop', 'admin', 'quick'].map((quadrant, n) => ({ id: `${n}`, text: quadrant, quadrant }))
+    const items = parseBackup(JSON.stringify({ app: 'composure', version: 1, items: old }))
+    expect(items.map((i) => i.quadrant)).toEqual(['do', 'do', 'admin', null, 'admin', 'quick'])
+  })
 })
 
 describe('subtasks', () => {
-  const trip = item('Plan trip', { quadrant: 'schedule' })
+  const trip = item('Plan trip', { quadrant: 'admin' })
   const flights = item('book flights', { parentId: trip.id, quadrant: 'do', slot: TODAY })
   const rent = item('Pay rent')
   const hotel = item('book hotel', { parentId: trip.id })
@@ -250,31 +286,31 @@ describe('time estimates', () => {
     expect(stepMinutes(40, 1)).toBe(45) // off the ladder: snaps to the next rung
   })
 
-  it('Sort lists each quadrant quickest first, with unknown lengths last', () => {
+  it('Sort lists each lane quickest first, with unknown lengths last', () => {
     const items = [
       item('long', { quadrant: 'do', minutes: 90 }),
       item('unknown', { quadrant: 'do' }),
       item('quick', { quadrant: 'do', minutes: 5 }),
-      item('other', { quadrant: 'schedule', minutes: 120 }),
+      item('other', { quadrant: 'admin', minutes: 120 }),
       item('queue b', { minutes: 60 }),
       item('queue a', { minutes: 5 }),
     ]
-    const [queue, doList, schedule] = sortGroups(items)
+    const [queue, doList, admin] = sortGroups(items)
     expect(doList.map((i) => i.text)).toEqual(['quick', 'long', 'unknown'])
-    expect(schedule.map((i) => i.text)).toEqual(['other'])
+    expect(admin.map((i) => i.text)).toEqual(['other'])
     // The unsorted queue stays in Dump order: it is a to-decide list, not a to-do list.
     expect(queue.map((i) => i.text)).toEqual(['queue b', 'queue a'])
   })
 
-  it('a day lists the urgent quadrant first, then quickest to longest inside each', () => {
+  it('a day lists Do before Admin, then quickest to longest inside each', () => {
     const items = [
-      item('schedule 10', { quadrant: 'schedule', slot: TODAY, minutes: 10 }),
+      item('admin 10', { quadrant: 'admin', slot: TODAY, minutes: 10 }),
       item('do 60', { quadrant: 'do', slot: TODAY, minutes: 60 }),
       item('do 15', { quadrant: 'do', slot: TODAY, minutes: 15 }),
       item('do ?', { quadrant: 'do', slot: TODAY }),
     ]
-    expect(itemsInColumn(items, TODAY, TODAY).map((i) => i.text)).toEqual(['do 15', 'do 60', 'do ?', 'schedule 10'])
-    expect(todayList(items, TODAY).map((i) => i.text)).toEqual(['do 15', 'do 60', 'do ?', 'schedule 10'])
+    expect(itemsInColumn(items, TODAY, TODAY).map((i) => i.text)).toEqual(['do 15', 'do 60', 'do ?', 'admin 10'])
+    expect(todayList(items, TODAY).map((i) => i.text)).toEqual(['do 15', 'do 60', 'do ?', 'admin 10'])
   })
 
   it('totals the time left today; a task with no estimate counts as a default-length one', () => {
