@@ -393,8 +393,44 @@
   border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
 }
 
-.dump[data-focusing] .main-thing {
+.dump[data-focusing] .main-thing,
+.dump[data-focusing] .send-bar {
   display: none;
+}
+
+/* Where today's tasks stand with Things: a quiet note before a send, a firmer one while it's unconfirmed. */
+.send-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 18px 0 0;
+  padding: 10px 14px;
+  color: var(--text-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+}
+
+.send-bar[data-state='sent'] {
+  color: var(--text);
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.send-bar .eyebrow {
+  flex-basis: 100%;
+}
+
+.send-bar__text {
+  font-size: 14px;
+}
+
+.send-bar__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
 }
 
 .today-row {

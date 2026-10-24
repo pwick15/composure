@@ -22,6 +22,7 @@ export function TopBar() {
   const items = useStore((s) => s.items)
   const showPlanned = useStore((s) => s.showPlanned)
   const key = useStore((s) => s.today)
+  const sessionsMode = useStore((s) => s.workMode === 'sessions')
 
   const counts = useMemo(() => {
     const kept = live(items)
@@ -46,7 +47,7 @@ export function TopBar() {
       </div>
 
       <nav className="tabs" role="tablist" aria-label="Mode">
-        {TABS.map((t) => {
+        {TABS.filter((t) => !sessionsMode || t.mode === 'today').map((t) => {
           const active = mode === t.mode
           return (
             <button

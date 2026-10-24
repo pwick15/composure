@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { addDays, columnFor, LATER, planColumns, slotLabel } from './dates'
-import { matrixMarkdown, parseBackup, planICS, planMarkdown, thingsURL } from './export'
+import { matrixMarkdown, parseBackup, planICS, planMarkdown, sessionMarkdown, sessionTasks, thingsSessionLinks, thingsURL } from './export'
 import { fmt, stepMinutes } from './duration'
 import { fuzzyBest, fuzzyMatch } from './fuzzy'
 import { parsePause } from './interrupt'
@@ -23,7 +23,7 @@ import {
   todayList,
   todayProgress,
 } from './selectors'
-import { splitLines } from './text'
+import { parseNotes, splitLines } from './text'
 import { isDone, leaves, progress, treeOrder } from './tree'
 import type { Item } from './types'
 
@@ -100,6 +100,27 @@ describe('splitLines', () => {
       'taxes',
       'done thing',
       'rent',
+    ])
+  })
+
+  it('drops the day/month/year Things puts in front of a copied task', () => {
+    expect(
+      splitLines('- [ ] 24/10/2026 Update my MacBook OS\n- [ ] 24/10/2026 TODAY TASKS MATE `\n- [ ] 4/1/2027 Admin\n- [x] 01/02/2026 Done one'),
+    ).toEqual(['Update my MacBook OS', 'TODAY TASKS MATE `', 'Admin', 'Done one'])
+    expect(parseNotes('- [x] 24/10/2026 Book dentist\n- [ ] 24/10/2026 Pay rent')).toEqual([
+      { text: 'Book dentist', done: true },
+      { text: 'Pay rent', done: false },
+    ])
+  })
+
+  it('only strips a date at the start, and only a real one followed by a title', () => {
+    expect(splitLines('Call mum on 24/10/2026 about it')).toEqual(['Call mum on 24/10/2026 about it'])
+    expect(splitLines('- 24/10/2026')).toEqual(['24/10/2026'])
+    expect(splitLines('32/10/2026 not a day\n24/13/2026 not a month\n24/10/26 two-digit year\n1/2 half')).toEqual([
+      '32/10/2026 not a day',
+      '24/13/2026 not a month',
+      '24/10/26 two-digit year',
+      '1/2 half',
     ])
   })
 })
@@ -212,6 +233,51 @@ describe('export', () => {
     const old = ['do', 'schedule', 'delegate', 'drop', 'admin', 'quick'].map((quadrant, n) => ({ id: `${n}`, text: quadrant, quadrant }))
     const items = parseBackup(JSON.stringify({ app: 'composure', version: 1, items: old }))
     expect(items.map((i) => i.quadrant)).toEqual(['do', 'do', 'admin', null, 'admin', 'quick'])
+  })
+})
+
+describe('sending a session to Things', () => {
+  const noon = new Date(`${TODAY}T12:00:00`).getTime()
+  const open1 = item('Open one', { slot: TODAY })
+  const done1 = item('Done one', { slot: TODAY, done: true, doneAt: noon })
+  const open2 = item('Second session task', { slot: TODAY, session: 2 })
+  const done2 = item('Done in two', { slot: TODAY, session: 2, done: true, doneAt: noon + 1000 })
+  const oldDone = item('Done yesterday', { slot: TODAY, done: true, doneAt: noon - 86_400_000 })
+  const later = item('Next week', { slot: '2026-10-19' })
+  const all = [open1, done1, open2, done2, oldDone, later]
+  const decode = (url: string) => JSON.parse(decodeURIComponent(url.split('data=')[1].split('&')[0]))
+
+  it('covers what was done today and what is left, session by session', () => {
+    expect(sessionTasks(all, TODAY).map((i) => i.text)).toEqual(['Done one', 'Open one', 'Done in two', 'Second session task'])
+    expect(sessionTasks(all, TODAY, 2).map((i) => i.text)).toEqual(['Done in two', 'Second session task'])
+  })
+
+  it('sends finished tasks completed and dated, and leftovers open, with a short note', () => {
+    const [url] = thingsSessionLinks(all, sessionTasks(all, TODAY, 1))
+    expect(url.startsWith('things:///json?data=')).toBe(true)
+    expect(decode(url)).toEqual([
+      { type: 'to-do', attributes: { title: 'Done one', notes: 'From Composure', completed: true, 'completion-date': new Date(noon).toISOString() } },
+      { type: 'to-do', attributes: { title: 'Open one', notes: 'From Composure' } },
+    ])
+  })
+
+  it('names the parent of a subtask in the note, and leaves out lane, day and estimate', () => {
+    const parent = item('Plan trip', { quadrant: 'admin', slot: TODAY })
+    const sub = item('Book flights', { parentId: parent.id, quadrant: 'do', slot: TODAY, minutes: 30 })
+    const [url] = thingsSessionLinks([parent, sub], [sub])
+    expect(decode(url)).toEqual([{ type: 'to-do', attributes: { title: 'Book flights', notes: 'From Composure · Part of: Plan trip' } }])
+  })
+
+  it('splits a long list over several links without losing a task', () => {
+    const many = Array.from({ length: 230 }, (_, k) => item(`Task number ${k}`, { slot: TODAY }))
+    const links = thingsSessionLinks(many, sessionTasks(many, TODAY))
+    expect(links.length).toBeGreaterThan(1)
+    expect(links.every((l) => l.length <= 12_000 && decode(l).length <= 100)).toBe(true)
+    expect(links.flatMap(decode).map((t: { attributes: { title: string } }) => t.attributes.title)).toEqual(many.map((i) => i.text))
+  })
+
+  it('writes the same tasks as Markdown checkboxes', () => {
+    expect(sessionMarkdown(sessionTasks(all, TODAY, 1))).toBe('- [x] Done one\n- [ ] Open one\n')
   })
 })
 

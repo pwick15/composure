@@ -362,6 +362,11 @@ export function clearAll() {
 /** Adds pasted lines as new items (outside the editor). */
 export function pasteLines(lines: string[]) {
   const s = get()
+  // Sessions mode has one place for a pasted list: today's plan, no lane, no day to choose.
+  if (s.workMode === 'sessions') {
+    todayAddTasks(lines)
+    return toast(`Added ${plural(lines.length, 'task')} to today`, 'mod+z')
+  }
   const tail = treeOrder(liveItems()).at(-1)
   const selected = s.mode === 'dump' ? findItem(s.selectedId) : undefined
   const anchor = selected?.id ?? tail?.parentId ?? tail?.id ?? null
@@ -395,12 +400,14 @@ const MODES: Mode[] = ['dump', 'sort', 'plan', 'today']
 export function setMode(mode: Mode) {
   const from = get().mode
   if (from === mode) return
+  if (get().workMode === 'sessions') return toast('Sessions mode keeps only Today. Switch it off to use the other screens')
   set(mode === 'archive' ? { mode, archiveFrom: from } : { mode })
   resetCursors()
 }
 
 /** ⌥←/⌥→: step to the neighbouring screen, stopping at the ends like pages. */
 export function cycleMode(dir: -1 | 1) {
+  if (get().workMode === 'sessions') return
   if (get().mode === 'archive') return archiveBack()
   const i = MODES.indexOf(get().mode)
   const next = MODES[i + dir]
@@ -1385,6 +1392,43 @@ export function sessionSync() {
   toast(`Time's up on "${text(timedOut.at(-1))}". ${upNext}`)
 }
 
+// ---------------------------------------------------------------- sent to Things
+//
+// Sending a session to Things hands over the only copy, so nothing leaves Composure until you say
+// the tasks arrived (⌥↵). Then they are removed, and ⌘Z brings them back.
+
+/** Notes the tasks that were opened in Things, to be cleared once you confirm. */
+export function outboxSet(ids: string[], parts: number) {
+  set({ outbox: { ids, sent: 1, parts } })
+}
+
+export function outboxSentPart() {
+  const { outbox } = get()
+  if (outbox) set({ outbox: { ...outbox, sent: outbox.sent + 1 } })
+}
+
+/** ⌥↵: the tasks arrived in Things, so they can go from here. */
+export function outboxConfirm() {
+  const { outbox, items } = get()
+  if (!outbox) return
+  const sent = new Set(outbox.ids)
+  const gone = items.filter((i) => sent.has(i.id))
+  // A parent left with none of its subtasks is only a label for tasks that are no longer here.
+  const left = items.filter((i) => !sent.has(i.id))
+  const orphans = new Set(gone.map((i) => i.parentId).filter((p): p is string => Boolean(p) && !left.some((i) => i.parentId === p)))
+  commit(left.filter((i) => !orphans.has(i.id)))
+  set({ outbox: null, picked: null })
+  sessionSync()
+  toast(`${plural(gone.length, 'task')} cleared. They're in Things now`, 'mod+z')
+}
+
+/** The tasks didn't arrive after all (or you changed your mind): keep them here, unsent. */
+export function outboxCancel() {
+  if (!get().outbox) return
+  set({ outbox: null })
+  toast('Kept here. Not sent to Things yet')
+}
+
 // ---------------------------------------------------------------- interruptions
 //
 // I (while a session runs) asks what came up. 1–4 start a bathroom break, a break, a call or a
@@ -1894,6 +1938,14 @@ export function cycleTheme() {
   const next = order[(order.indexOf(get().theme) + 1) % order.length]
   set({ theme: next })
   toast(`Theme: ${next}`)
+}
+
+/** Full app or sessions only. Turning sessions on lands on Today; nothing is deleted either way. */
+export function toggleWorkMode() {
+  const workMode = get().workMode === 'full' ? 'sessions' : 'full'
+  set(workMode === 'sessions' ? { workMode, mode: 'today' } : { workMode })
+  resetCursors()
+  toast(workMode === 'sessions' ? 'Sessions mode: just Today' : 'Full app: Dump, Sort, Plan and Archive are back')
 }
 
 export function toggleHud() {

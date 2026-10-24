@@ -4,6 +4,7 @@ import { flushSync } from 'react-dom'
 import { Kbd } from '../components/Kbd'
 import { ParentRef, QuadrantTag, SlotTag, TimeTag } from '../components/Tags'
 import { isOverdue, longDate } from '../lib/dates'
+import { sessionTasks } from '../lib/export'
 import { feedback } from '../keyboard/feedback'
 import { autosize } from '../lib/dom'
 import { DEFAULT_FOCUS, fmt } from '../lib/duration'
@@ -25,6 +26,8 @@ import type { Item } from '../lib/types'
 import { useNow } from '../lib/useNow'
 import {
   ADD_OPTIONS,
+  outboxCancel,
+  outboxConfirm,
   pauseBegin,
   pauseClose,
   pauseEnd,
@@ -50,6 +53,7 @@ import {
   todayFocus,
   todayTick,
 } from '../state/actions'
+import { copySessionMarkdown, sendNextPart, sendSessionToThings } from '../state/exporters'
 import { useStore } from '../state/store'
 
 /** Minutes → "52m" / "1h 5m", rounding up so a running clock never shows 0 early. */
@@ -522,6 +526,68 @@ function MainThing({ items, today }: { items: Item[]; today: string }) {
   )
 }
 
+/**
+ * Where today's tasks stand with Things. Before a send: "not sent yet", with the ways to send. After
+ * one: the tasks are still here until you say they arrived, since this may be their only copy.
+ */
+function SendBar({ items, today }: { items: Item[]; today: string }) {
+  const outbox = useStore((s) => s.outbox)
+  const sessionsMode = useStore((s) => s.workMode === 'sessions')
+  const tasks = useMemo(() => sessionTasks(items, today), [items, today])
+
+  if (outbox) {
+    const waiting = outbox.sent < outbox.parts
+    return (
+      <div className="send-bar" data-state="sent" role="status">
+        <span className="eyebrow">// sent to things</span>
+        <span className="send-bar__text">
+          {waiting
+            ? `Part ${outbox.sent} of ${outbox.parts} is open in Things. The rest is still to send.`
+            : `${outbox.ids.length} ${outbox.ids.length === 1 ? 'task' : 'tasks'} sent. Did they arrive? They stay here until you say.`}
+        </span>
+        <span className="send-bar__keys" onMouseDown={keepFocus}>
+          {waiting && (
+            <button className="cta cta--inline" onClick={sendNextPart}>
+              Send part {outbox.sent + 1} <Kbd k="alt+n" size="xs" />
+            </button>
+          )}
+          <button className="cta cta--inline" onClick={outboxConfirm}>
+            They arrived, clear them <Kbd k="alt+enter" size="xs" />
+          </button>
+          <button className="cta cta--inline" onClick={() => void copySessionMarkdown('all')}>
+            Copy as Markdown
+          </button>
+          <button className="cta cta--inline" onClick={outboxCancel}>
+            Keep them here
+          </button>
+        </span>
+      </div>
+    )
+  }
+
+  if (!sessionsMode || !tasks.length) return null
+  const finished = tasks.filter((i) => i.done).length
+  return (
+    <div className="send-bar" data-state="unsent" role="status">
+      <span className="eyebrow">// not sent to things yet</span>
+      <span className="send-bar__text">
+        {finished} done · {tasks.length - finished} left
+      </span>
+      <span className="send-bar__keys" onMouseDown={keepFocus}>
+        <button className="cta cta--inline" onClick={() => sendSessionToThings('session')}>
+          Send this session <Kbd k="alt+s" size="xs" />
+        </button>
+        <button className="cta cta--inline" onClick={() => sendSessionToThings('all')}>
+          Send all <Kbd k="alt+shift+s" size="xs" />
+        </button>
+        <button className="cta cta--inline" onClick={() => void copySessionMarkdown('session')}>
+          Copy as Markdown
+        </button>
+      </span>
+    </div>
+  )
+}
+
 export function TodayMode() {
   const items = useStore((s) => s.items)
   const adding = useStore((s) => s.todayAdd !== null)
@@ -532,6 +598,7 @@ export function TodayMode() {
   // Read so a rename shows at once: names come from the store through sessionName().
   useStore((s) => s.sessionNames)
   const today = useStore((s) => s.today)
+  const sessionsMode = useStore((s) => s.workMode === 'sessions')
 
   const list = useMemo(() => todayList(items, today), [items, today])
   const currentId = resolveTodayCursor(items, cursor, today)
@@ -656,23 +723,33 @@ export function TodayMode() {
         {list.length > 0 && <SessionSummary items={items} today={today} />}
         <SessionPanel items={items} today={today} />
         {(list.length > 0 || mainThing(items, today)) && <MainThing items={items} today={today} />}
+        <SendBar items={items} today={today} />
 
         {list.length === 0 && !adding ? (
           <div className="dump-empty dump-empty--static">
-            <span className="dump-empty__title">{allDone ? 'Everything for today is done.' : 'Nothing planned for today.'}</span>
+            <span className="dump-empty__title">
+              {allDone ? 'Everything for today is done.' : sessionsMode ? 'No tasks in today\u2019s sessions.' : 'Nothing planned for today.'}
+            </span>
             <span className="dump-empty__keys">
+              {sessionsMode && !allDone && (
+                <span>
+                  Paste your list from Things (<Kbd k="mod+v" size="xs" />), one task per line.
+                </span>
+              )}
               <button className="cta cta--inline" onMouseDown={keepFocus} onClick={todayAddOpen}>
                 Add a task <Kbd k="space" size="xs" />
               </button>
-              <button className="cta cta--inline" onMouseDown={keepFocus} onClick={() => setMode('plan')}>
-                Plan the week <Kbd k="shift+3" size="xs" />
-              </button>
-              {allDone && (
+              {!sessionsMode && (
+                <button className="cta cta--inline" onMouseDown={keepFocus} onClick={() => setMode('plan')}>
+                  Plan the week <Kbd k="shift+3" size="xs" />
+                </button>
+              )}
+              {allDone && !sessionsMode && (
                 <button className="cta cta--inline" onMouseDown={keepFocus} onClick={() => setMode('archive')}>
                   See what you did <Kbd k="shift+5" size="xs" />
                 </button>
               )}
-              <span>or enjoy the space.</span>
+              {!sessionsMode && <span>or enjoy the space.</span>}
             </span>
           </div>
         ) : (

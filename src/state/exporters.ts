@@ -1,7 +1,7 @@
 import { todayKey } from '../lib/dates'
-import { makeBackup, matrixMarkdown, mergeSessionNames, parseBackup, parseSessionNames, planICS, planMarkdown, thingsURL } from '../lib/export'
+import { makeBackup, matrixMarkdown, mergeSessionNames, parseBackup, parseSessionNames, planICS, planMarkdown, sessionMarkdown, sessionTasks, thingsSessionLinks, thingsURL } from '../lib/export'
 import { parseNotes } from '../lib/text'
-import { importItems, makeItem, toast } from './actions'
+import { importItems, makeItem, outboxSentPart, outboxSet, toast, todayCurrent } from './actions'
 import { getState as get, setState as set } from './store'
 
 async function copyText(text: string): Promise<boolean> {
@@ -52,6 +52,57 @@ export function sendToThings() {
   if (!url) return toast('Nothing planned yet', 'shift+3')
   window.location.href = url
   toast('Opening Things 3…')
+}
+
+// ---------------------------------------------------------------- a work session, back to Things
+
+/** Today's tasks to send: one session (the one you're in, or the running one) or all of them. */
+function sendable(scope: 'session' | 'all') {
+  const { items, run } = get()
+  const session = scope === 'session' ? (run?.session ?? todayCurrent()?.session) : undefined
+  return sessionTasks(items, todayKey(), session)
+}
+
+/** What a send covers, in words, for toasts. */
+const count = (n: number) => `${n} ${n === 1 ? 'task' : 'tasks'}`
+
+/**
+ * ⌥S / ⌥⇧S: opens Things with the finished tasks completed (they land in its Logbook) and the rest
+ * open. Nothing leaves Composure until you confirm it arrived. A long list goes in several links:
+ * the first opens now and ⌥N opens each next.
+ */
+export function sendSessionToThings(scope: 'session' | 'all') {
+  const tasks = sendable(scope)
+  if (!tasks.length) return toast('Nothing in today to send')
+  const links = thingsSessionLinks(get().items, tasks)
+  outboxSet(tasks.map((t) => t.id), links.length)
+  window.location.href = links[0]
+  toast(
+    links.length > 1
+      ? `Opening Things 3 (part 1 of ${links.length}). ⌥N sends the next`
+      : `Opening Things 3 with ${count(tasks.length)}. Did they arrive? ⌥↵ clears them here`,
+  )
+}
+
+/** ⌥N: the next link of a long send. */
+export function sendNextPart() {
+  const { outbox, items } = get()
+  if (!outbox || outbox.sent >= outbox.parts) return
+  const byId = new Map(items.map((i) => [i.id, i]))
+  const tasks = outbox.ids.flatMap((id) => byId.get(id) ?? [])
+  const link = thingsSessionLinks(items, tasks)[outbox.sent]
+  if (!link) return
+  outboxSentPart()
+  window.location.href = link
+  toast(`Opening Things 3 (part ${outbox.sent + 1} of ${outbox.parts})`)
+}
+
+/** The same tasks as `- [x]` / `- [ ]` lines, for pasting into Things by hand if the link fails. */
+export async function copySessionMarkdown(scope: 'session' | 'all') {
+  const tasks = sendable(scope)
+  if (!tasks.length) return toast('Nothing in today to copy')
+  const ok = await copyText(sessionMarkdown(tasks))
+  toast(ok ? `Copied ${count(tasks.length)} as Markdown. Paste them into Things` : 'Copy failed. Check clipboard permissions')
 }
 
 export function downloadBackup() {

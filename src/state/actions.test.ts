@@ -1916,3 +1916,75 @@ describe('picking several (⇧↑ ⇧↓)', () => {
     expect(getState().picked).toBeNull()
   })
 })
+
+describe('sessions mode and the send back to Things', () => {
+  const sessionsOn = () => a.toggleWorkMode()
+
+  it('puts a pasted list straight into today, with no lane or day to choose', () => {
+    sessionsOn()
+    expect(getState()).toMatchObject({ workMode: 'sessions', mode: 'today' })
+    a.pasteLines(['Update my MacBook OS', 'Admin'])
+    expect(getState().items.map((i) => [i.text, i.quadrant, i.slot, i.session])).toEqual([
+      ['Update my MacBook OS', null, todayKey(), 1],
+      ['Admin', null, todayKey(), 1],
+    ])
+    expect(todayList(getState().items, todayKey())).toHaveLength(2)
+    a.undo()
+    expect(getState().items).toHaveLength(0)
+  })
+
+  it('keeps to Today, and the full app comes back with nothing lost', () => {
+    dump('kept')
+    sessionsOn()
+    a.setMode('sort')
+    a.cycleMode(-1)
+    expect(getState().mode).toBe('today')
+    sessionsOn()
+    expect(getState().workMode).toBe('full')
+    a.setMode('sort')
+    expect(getState().mode).toBe('sort')
+    expect(texts()).toEqual(['kept'])
+  })
+
+  const sentTasks = () => {
+    sessionsOn()
+    a.pasteLines(['one', 'two', 'three'])
+    const [one, two, three] = getState().items
+    a.todayTick(one.id)
+    return { one, two, three }
+  }
+
+  it('keeps the tasks until you say they arrived, then clears finished and leftover ones together', () => {
+    const { one, two, three } = sentTasks()
+    a.outboxSet([one.id, two.id], 1)
+    expect(texts()).toEqual(['one', 'two', 'three'])
+    a.outboxConfirm()
+    expect(texts()).toEqual(['three'])
+    expect(getState().outbox).toBeNull()
+    a.undo()
+    expect(texts()).toEqual(['one', 'two', 'three'])
+    expect(three.done).toBe(false)
+  })
+
+  it('keeps everything when they did not arrive', () => {
+    const { one, two, three } = sentTasks()
+    a.outboxSet([one.id, two.id, three.id], 2)
+    a.outboxCancel()
+    expect(getState().outbox).toBeNull()
+    expect(texts()).toEqual(['one', 'two', 'three'])
+  })
+
+  it('drops a parent once all its subtasks are cleared', () => {
+    dump('Plan trip', 'flights', 'hotel')
+    const [parent, flights, hotel] = getState().items
+    a.indentItem(flights.id)
+    a.indentItem(hotel.id)
+    a.outboxSet([flights.id], 1)
+    a.outboxConfirm()
+    expect(texts()).toEqual(['Plan trip', 'hotel'])
+    a.outboxSet([hotel.id], 1)
+    a.outboxConfirm()
+    expect(texts()).toEqual([])
+    expect(parent.text).toBe('Plan trip')
+  })
+})

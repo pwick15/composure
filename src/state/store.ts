@@ -69,6 +69,17 @@ export interface State {
   showPlanned: boolean
   /** What you've called a day's work sessions: day → session number → name. Unnamed ones are "Session 2". */
   sessionNames: Record<string, Record<number, string>>
+  /**
+   * `full` is the whole app. `sessions` is one screen: paste a list, size the tasks, run the focus
+   * timer over them in today's sessions, and send the lot back to Things. Sort, Plan, Dump and the
+   * Archive are put away, not removed.
+   */
+  workMode: 'full' | 'sessions'
+  /**
+   * Tasks sent to Things that you haven't yet said arrived. They stay here until you do (⌥↵), because
+   * this may be their only copy. `sent` of `parts` links have been opened so far (a long list needs several).
+   */
+  outbox: { ids: string[]; sent: number; parts: number } | null
 
   /** The day it is. Screens read this rather than the clock, so they move on at midnight (state/day.ts). */
   today: string
@@ -131,6 +142,8 @@ export const useStore = create<State>()(
         hud: false,
         showPlanned: false,
         sessionNames: {},
+        workMode: 'full',
+        outbox: null,
 
         today: todayKey(),
 
@@ -188,6 +201,8 @@ export const useStore = create<State>()(
         hud: s.hud,
         showPlanned: s.showPlanned,
         sessionNames: s.sessionNames,
+        workMode: s.workMode,
+        outbox: s.outbox,
         helpTab: s.helpTab,
         run: s.run,
       }),

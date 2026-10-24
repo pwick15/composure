@@ -1,7 +1,7 @@
 import { addDays, columnFor, isDateSlot, LATER, longDate, planColumns } from './dates'
 import { cleanMinutes, fmt, sumMinutes } from './duration'
 import { QUADRANTS, QUADRANT_BY_ID, upgradeQuadrant } from './quadrants'
-import { isPlannable, planQueue } from './selectors'
+import { doneDay, isPlannable, planQueue, todayList } from './selectors'
 import { leaves, parentOf } from './tree'
 import type { Item } from './types'
 
@@ -136,6 +136,59 @@ export function thingsURL(all: Item[], today: string): string | null {
     }))
   if (!todos.length) return null
   return `things:///json?data=${encodeURIComponent(JSON.stringify(todos))}&reveal=true`
+}
+
+/**
+ * What sending a work session back to Things covers: what was ticked off today, then what is still
+ * on today's plan, in session order. With a `session`, only that one.
+ */
+export function sessionTasks(all: Item[], today: string, session?: number): Item[] {
+  const finished = leaves(all)
+    .filter((i) => i.done && isPlannable(i) && doneDay(i) === today && isDateSlot(i.slot) && i.slot <= today)
+    .sort((a, b) => (a.doneAt ?? 0) - (b.doneAt ?? 0))
+  return [...finished, ...todayList(all, today)]
+    .filter((i) => session === undefined || i.session === session)
+    .sort((a, b) => a.session - b.session)
+}
+
+/** Plain `- [x]` / `- [ ]` lines: the fallback when the Things link fails. */
+export const sessionMarkdown = (tasks: Item[]): string => tasks.map((i) => `- [${i.done ? 'x' : ' '}] ${i.text}`).join('\n') + '\n'
+
+// A link carries every task in it, and Things takes 250 to-dos per 10 seconds, so long lists are cut
+// into several links of at most this many tasks and this many characters.
+const LINK_TASKS = 100
+const LINK_CHARS = 12_000
+
+/**
+ * things:///json links that add the tasks: ticked ones already completed (so they land in the
+ * Logbook, dated when they were done), the rest open in the Inbox. One link, or several for a long list.
+ */
+export function thingsSessionLinks(all: Item[], tasks: Item[]): string[] {
+  const todo = (i: Item) => {
+    const parent = parentOf(all, i)
+    return {
+      type: 'to-do',
+      attributes: {
+        title: i.text,
+        notes: parent ? `From Composure · Part of: ${parent.text}` : 'From Composure',
+        ...(i.done ? { completed: true, 'completion-date': new Date(i.doneAt ?? Date.now()).toISOString() } : {}),
+      },
+    }
+  }
+  const link = (todos: unknown[]) => `things:///json?data=${encodeURIComponent(JSON.stringify(todos))}&reveal=true`
+  const links: string[] = []
+  let batch: unknown[] = []
+  for (const task of tasks) {
+    const next = [...batch, todo(task)]
+    if (batch.length && (next.length > LINK_TASKS || link(next).length > LINK_CHARS)) {
+      links.push(link(batch))
+      batch = [todo(task)]
+    } else {
+      batch = next
+    }
+  }
+  if (batch.length) links.push(link(batch))
+  return links
 }
 
 // ---------------------------------------------------------------- backup

@@ -50,6 +50,8 @@ function hintsFor(s: State): Hint[] {
     if (s.run?.pause) return [h('enter', "I'm back")]
     if (s.pausing) return [h('1–4', 'bathroom · break · call · chore', true), h('enter', 'start typed'), h('escape', 'cancel')]
     if (s.run) return [h('mod+k', 'done, next'), h('=', 'more time'), h('alt+p', 'something came up'), h('alt+f', 'stop')]
+    if (s.workMode === 'sessions')
+      return [h('alt+f', 'start session'), h('mod+k', 'done'), h('space', 'add'), h('⌥1–6', 'time', true), h('1–9', 'session', true), h('alt+s', 'send to Things')]
     return [h('alt+f', 'start session'), h('alt+m', 'main thing'), h('space', 'add'), h('enter', 'open'), h('mod+k', 'done'), h('1–9', 'session', true), h('alt+t', 'not today')]
   }
 

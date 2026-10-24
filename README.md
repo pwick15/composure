@@ -48,6 +48,17 @@ Sort and Plan share the same navigation. Got one wrong? `⌫` brings back the la
 
 When the week is planned, export from search: copy as Markdown, download an `.ics` calendar file, or send to Things 3.
 
+**Pasting from Things.** Copying tasks out of Things gives lines like `- [ ] 24/10/2026 Update my MacBook OS`. Paste or import them and the checkbox and the leading day/month/year are dropped (`[x]` stays done). A date anywhere but the start of a line is left alone, and so is a line with no date.
+
+**Sessions mode, and sending a session back to Things.** For one job: take a pile of leftover tasks, run timed sessions over them and hand the result back. Search "mode" and pick *sessions only* (the same entry brings the full app back; nothing is deleted either way, Dump, Sort, Plan and the Archive are only put away, along with their keys and the calendar and plan exports).
+
+- Only Today is left. Paste a list anywhere and every line becomes a task in today's first session (or the session of the task you're on), with no lane and no day. Size them with `⌥1`–`⌥6` / `=` / `-`, move them between sessions with `1`–`9`, name sessions with `⌥R`, run the focus timer with `⌥F` and use `⌥P` when something comes up.
+- **Send.** `⌥S` sends the session you're in (or the one running), `⌥⇧S` sends every session. It opens a `things:///json` link: ticked tasks go in as completed with the time you ticked them (so they appear in Things' Logbook), the rest open in the Inbox, each with the note "From Composure" (plus the parent's name for a subtask; lane and estimate are not carried over). A long list is split into several links of at most 100 tasks: the first opens at once and `⌥N` opens each next one. The first time, Things asks whether to allow URL commands; answer Enable, and if the tasks didn't arrive send again.
+- **Nothing is cleared until you say so.** After a send the tasks stay in Composure and the bar under the main thing asks "Did they arrive?". `⌥↵` says yes: the sent tasks (finished and leftover) are removed from Composure, and `⌘Z` brings them back. "Keep them here" (or search "not in Things") drops the pending send instead. In sessions mode, until a send is confirmed Today shows "not sent to Things yet" with the finished and leftover counts.
+- **Fallback.** Search "copy this session as Markdown" (or "every session") for `- [x]` / `- [ ]` lines to paste into Things by hand, the same as the manual route.
+
+Nothing else leaves the browser: the link is opened locally by your Things app, and there is no server.
+
 ## Develop
 
 ```sh
@@ -87,7 +98,7 @@ npx wrangler pages deploy dist --project-name composure
 | `src/keyboard/feedback.ts` | Keycap flashes and the keystroke overlay. |
 | `src/state/actions.ts` | All state changes, with undo history, including the thought sheet's. |
 | `src/state/day.ts` | Keeps "today" right at midnight and when the tab comes back. |
-| `src/lib/` | Pure logic: dates, fuzzy search, queues, the sheet's fields (`fields.ts`), Markdown/iCalendar/Things export. |
+| `src/lib/` | Pure logic: dates, fuzzy search, queues, the sheet's fields (`fields.ts`), Markdown/iCalendar/Things export (including the session send), pasted-line cleaning (`text.ts`). |
 | `src/lib/selectors.ts` | Which thoughts each screen shows, including what counts as archived (`archivedIds`, `live`). |
 | `src/components/ThoughtSheet.tsx` | The one editor for a thought, opened from every screen. |
 | `src/components/Help.tsx` | `?`: how it works, and every key. |

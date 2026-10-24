@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import type { ReactNode } from 'react'
-import { COMMANDS, GROUP_ORDER, SHEET_HINTS, titleOf } from '../keyboard/commands'
+import { COMMANDS, GROUP_ORDER, inWorkMode, SHEET_HINTS, titleOf } from '../keyboard/commands'
 import { keepFocus, SNAP } from '../lib/motion'
 import type { Mode } from '../lib/types'
 import { helpTab, setMode, toggleHelp } from '../state/actions'
@@ -43,7 +43,51 @@ function Card({ name, title, k, mode, children }: CardProps) {
   )
 }
 
+/** The guide while sessions mode is on: paste, size, work, send back. */
+function SessionsGuide() {
+  return (
+    <div className="guide">
+      <p className="guide__lede">Paste a pile of tasks, size them, work through them in timed sessions, then send them back to Things.</p>
+      <ol className="guide__flow">
+        <Card name="Paste" title="Bring the list in" k="mod+v">
+          <p>
+            Paste what you copied from Things. Every line becomes a task for today, and the date Things puts in front is dropped.{' '}
+            <Kbd k="space" size="xs" /> adds one by hand.
+          </p>
+        </Card>
+        <Card name="Size" title="Say how long" k="alt+3">
+          <p>
+            <Kbd label="⌥1–6" size="xs" /> sets the time, <Kbd k="=" size="xs" /> and <Kbd k="-" size="xs" /> nudge it.{' '}
+            <Kbd label="1–9" size="xs" /> moves a task to a session, and clicking a session's name names it.
+          </p>
+        </Card>
+        <Card name="Work" title="One thing at a time" k="alt+f">
+          <p>
+            <Kbd k="alt+f" size="xs" /> starts the session. Each task gets its estimate and one clock counts down the session.{' '}
+            <Kbd k="mod+k" size="xs" /> ticks a task off. <Kbd k="alt+p" size="xs" /> is for something that came up.
+          </p>
+        </Card>
+        <Card name="Send" title="Back to Things" k="alt+s">
+          <p>
+            <Kbd k="alt+s" size="xs" /> sends this session and <Kbd k="alt+shift+s" size="xs" /> every session. Ticked tasks go in
+            as done (they show in the Logbook), the rest open in the Inbox. Things asks once to allow links.
+          </p>
+          <p>
+            Tasks stay here until you press <Kbd k="alt+enter" size="xs" /> to say they arrived. If the link fails, search "copy"
+            for the Markdown route.
+          </p>
+        </Card>
+      </ol>
+      <p className="guide__rule">
+        <Kbd k="mod+z" size="xs" /> undoes anything. Letters always type: search for "mode" to bring back the full app.
+      </p>
+    </div>
+  )
+}
+
 function Guide() {
+  const sessions = useStore((s) => s.workMode === 'sessions')
+  if (sessions) return <SessionsGuide />
   return (
     <div className="guide">
       <p className="guide__lede">
@@ -92,6 +136,9 @@ function Guide() {
           <p>
             <Kbd k="mod+k" size="xs" /> ticks a task off, <Kbd k="alt+t" size="xs" /> moves it to tomorrow,{' '}
             <Kbd k="space" size="xs" /> adds one, <Kbd label="1–9" size="xs" /> moves it to a session.
+          </p>
+          <p>
+            <Kbd k="alt+s" size="xs" /> sends the session to Things 3: ticked tasks as done, the rest open.
           </p>
         </Card>
       </ol>
@@ -148,7 +195,7 @@ interface KeyRow {
 }
 
 function rowsFor(group: string): KeyRow[] {
-  const fromCommands = COMMANDS.filter((c) => c.group === group && c.keys?.length && c.sheet !== false).map((c) => ({
+  const fromCommands = COMMANDS.filter((c) => c.group === group && c.keys?.length && c.sheet !== false && inWorkMode(c)).map((c) => ({
     title: titleOf(c),
     keys: c.keys!,
   }))

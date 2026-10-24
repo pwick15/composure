@@ -27,6 +27,8 @@ export interface Command {
   scope?: Mode
   /** Only active on these screens: one command for a key that means the same on each of them. */
   scopes?: Mode[]
+  /** Put away in sessions mode (a screen or export that only the full app uses). */
+  fullOnly?: boolean
   /** Only active while this holds (for keys that mean something else in some states). */
   when?: () => boolean
   /** Listed in the command palette (default true). */
@@ -44,8 +46,13 @@ export const titleOf = (c: Command) => (typeof c.title === 'function' ? c.title(
 
 export const hudOf = (c: Command) => (typeof c.hud === 'function' ? c.hud() : (c.hud ?? titleOf(c)))
 
+/** Whether the current work mode has the command at all: sessions mode puts the other screens away. */
+export const inWorkMode = (c: Command) =>
+  getState().workMode === 'full' || (!c.fullOnly && (!c.scope || c.scope === 'today'))
+
 /** Whether a command is active on a screen. */
-export const inScope = (c: Command, mode: Mode) => (!c.scope && !c.scopes) || c.scope === mode || Boolean(c.scopes?.includes(mode))
+export const inScope = (c: Command, mode: Mode) =>
+  inWorkMode(c) && ((!c.scope && !c.scopes) || c.scope === mode || Boolean(c.scopes?.includes(mode)))
 
 const dayTitle = (n: number) => () => {
   const col = planColumns(todayKey())[n - 1]
@@ -59,6 +66,7 @@ export const COMMANDS: Command[] = [
   // ------------------------------------------------------------ modes
   {
     id: 'mode.dump',
+    fullOnly: true,
     title: 'Dump: get it all out',
     hud: 'Dump',
     group: 'Modes',
@@ -68,6 +76,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'mode.sort',
+    fullOnly: true,
     title: 'Sort: Do, Admin or 2-minute',
     hud: 'Sort',
     group: 'Modes',
@@ -77,6 +86,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'mode.plan',
+    fullOnly: true,
     title: 'Plan: slot into days',
     hud: 'Plan',
     group: 'Modes',
@@ -95,6 +105,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'mode.archive',
+    fullOnly: true,
     title: 'Open archive',
     hud: 'Archive',
     group: 'Modes',
@@ -104,6 +115,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'mode.next',
+    fullOnly: true,
     title: 'Next screen',
     hud: 'Screen →',
     group: 'Modes',
@@ -113,6 +125,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'mode.prev',
+    fullOnly: true,
     title: 'Previous screen',
     hud: '← Screen',
     group: 'Modes',
@@ -706,6 +719,79 @@ export const COMMANDS: Command[] = [
     run: a.sessionStop,
   },
 
+  // The tasks of today's sessions go back to Things: the finished ones already ticked, the rest open.
+  // Nothing leaves here until ⌥↵ says they arrived, and ⌘Z brings them back after that.
+  {
+    id: 'things.session',
+    title: 'Send this session to Things 3',
+    hud: 'Send session',
+    group: 'Today',
+    scope: 'today',
+    keys: ['alt+s'],
+    keywords: 'things cultured code export finish done leftovers logbook back return',
+    run: () => x.sendSessionToThings('session'),
+  },
+  {
+    id: 'things.all',
+    title: 'Send every session to Things 3',
+    hud: 'Send all',
+    group: 'Today',
+    scope: 'today',
+    keys: ['alt+shift+s'],
+    keywords: 'things cultured code export finish done leftovers logbook back return all day',
+    run: () => x.sendSessionToThings('all'),
+  },
+  {
+    id: 'things.next',
+    title: 'Send the next part to Things 3',
+    hud: 'Next part',
+    group: 'Today',
+    scope: 'today',
+    keys: ['alt+n'],
+    when: () => {
+      const o = getState().outbox
+      return Boolean(o && o.sent < o.parts)
+    },
+    keywords: 'things long list more part',
+    run: x.sendNextPart,
+  },
+  {
+    id: 'things.arrived',
+    title: 'They arrived in Things: clear them from here',
+    hud: 'Arrived',
+    group: 'Today',
+    scope: 'today',
+    keys: ['alt+enter'],
+    when: () => getState().outbox !== null,
+    keywords: 'things confirm sent imported remove clear done',
+    run: a.outboxConfirm,
+  },
+  {
+    id: 'things.keep',
+    title: 'Not in Things after all: keep the tasks here',
+    group: 'Today',
+    scope: 'today',
+    when: () => getState().outbox !== null,
+    keywords: 'things cancel failed did not arrive keep unsent',
+    run: a.outboxCancel,
+  },
+  {
+    id: 'things.copy',
+    title: 'Copy this session as Markdown (for Things)',
+    group: 'Today',
+    scope: 'today',
+    keywords: 'things clipboard checklist paste fallback finished leftovers',
+    run: () => void x.copySessionMarkdown('session'),
+  },
+  {
+    id: 'things.copyAll',
+    title: 'Copy every session as Markdown (for Things)',
+    group: 'Today',
+    scope: 'today',
+    keywords: 'things clipboard checklist paste fallback finished leftovers all day',
+    run: () => void x.copySessionMarkdown('all'),
+  },
+
   // ------------------------------------------------------------ archive
   {
     id: 'archive.back',
@@ -745,6 +831,7 @@ export const COMMANDS: Command[] = [
   // ------------------------------------------------------------ export
   {
     id: 'export.plan',
+    fullOnly: true,
     title: 'Copy plan as Markdown',
     group: 'Export',
     keywords: 'clipboard todo checklist share week',
@@ -752,6 +839,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'export.matrix',
+    fullOnly: true,
     title: 'Copy lanes as Markdown',
     group: 'Export',
     keywords: 'clipboard lanes do admin two minute priorities',
@@ -759,6 +847,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'export.ics',
+    fullOnly: true,
     title: 'Download calendar file (.ics)',
     group: 'Export',
     keywords: 'apple google outlook calendar events import',
@@ -766,6 +855,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'export.things',
+    fullOnly: true,
     title: 'Send plan to Things 3',
     group: 'Export',
     keywords: 'todo tasks cultured code',
@@ -795,6 +885,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'data.unorganise',
+    fullOnly: true,
     title: 'Start the sorting over: clear every lane, day and time',
     group: 'Data',
     keywords: 'undo reset redo sort plan organise organize unsort unplan forgot again clear priorities days times',
@@ -802,6 +893,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: 'data.autoOrder',
+    fullOnly: true,
     title: 'Back to the automatic order (quickest first) everywhere',
     group: 'Data',
     keywords: 'reset order manual rearranged undo sort by time shortest first',
@@ -817,6 +909,13 @@ export const COMMANDS: Command[] = [
   },
 
   // ------------------------------------------------------------ settings
+  {
+    id: 'settings.workMode',
+    title: () => (getState().workMode === 'sessions' ? 'Mode: back to the full app (Dump, Sort, Plan)' : 'Mode: sessions only (paste a list, work through it, send it back)'),
+    group: 'Settings',
+    keywords: 'sessions only simple things admin leftover focus timer hide screens full app switch',
+    run: a.toggleWorkMode,
+  },
   { id: 'settings.theme', title: 'Switch theme', group: 'Settings', keywords: 'dark light mode appearance', run: a.cycleTheme },
   {
     id: 'settings.hud',

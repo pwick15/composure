@@ -162,3 +162,33 @@ describe('the fill-in in Dump (→)', () => {
     expect(findCommand(press('Backspace'), 'dump', false)).toBeUndefined()
   })
 })
+
+describe('sessions mode', () => {
+  const sessions = () => setState({ workMode: 'sessions', mode: 'today' })
+  const full = () => setState({ workMode: 'full', outbox: null })
+
+  it('puts the other screens away, and leaves the keys for Today', () => {
+    sessions()
+    for (const spec of [{ n: 1, id: 'mode.dump' }, { n: 2, id: 'mode.sort' }, { n: 3, id: 'mode.plan' }, { n: 5, id: 'mode.archive' }]) {
+      expect(findCommand(digit(spec.n, { shiftKey: true }), 'today', false)?.id, spec.id).toBeUndefined()
+    }
+    expect(findCommand(letter('f', { altKey: true }), 'today', false)?.id).toBe('today.session')
+    expect(findCommand(press('ArrowRight', 'ArrowRight', { altKey: true }), 'today', false)).toBeUndefined()
+    full()
+    expect(findCommand(digit(2, { shiftKey: true }), 'today', false)?.id).toBe('mode.sort')
+  })
+
+  it('⌥S sends this session, ⌥⇧S all of them, and only on Today', () => {
+    expect(findCommand(letter('s', { altKey: true }), 'today', false)?.id).toBe('things.session')
+    expect(findCommand(letter('s', { altKey: true, shiftKey: true }), 'today', false)?.id).toBe('things.all')
+    for (const m of MODES.filter((m) => m !== 'today')) expect(findCommand(letter('s', { altKey: true }), m, false)).toBeUndefined()
+  })
+
+  it('⌥↵ says they arrived, only while something waits to be confirmed', () => {
+    const enter = press('Enter', 'Enter', { altKey: true })
+    expect(findCommand(enter, 'today', false)).toBeUndefined()
+    setState({ outbox: { ids: ['a'], sent: 1, parts: 1 } })
+    expect(findCommand(enter, 'today', false)?.id).toBe('things.arrived')
+    full()
+  })
+})
